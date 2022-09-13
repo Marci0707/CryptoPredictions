@@ -7,13 +7,29 @@ from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.base import TransformerMixin
 
 
+def drop_columns_deemed_as_useless(df: pd.DataFrame):
+    twitter_cols = df.filter(regex='twitter').columns.tolist()
+    facebook_cols = df.filter(regex='fb_').columns.tolist()
+    cryptocompare_columns = ['comments', 'posts', 'followers']
+    almost_duplicates = ['open']  # same as previous day close
+    all_time_columns = df.filter(regex='all_time').columns.tolist()  # we have delta columns from these as well
+
+    return df.drop(columns=twitter_cols + facebook_cols + cryptocompare_columns + almost_duplicates + all_time_columns)
+
+
 class CryptoCompareReader:
-    # TODO drop last
-    def __init__(self, crypto_name, folder: str, drop_na_subset: Optional[Sequence[str]] = None, add_time_columns=True):
+
+    def __init__(self, crypto_name, folder: str, drop_na_subset: Optional[Sequence[str]] = None, add_time_columns=True,
+                 drop_last=False):
         self.crypto_name = crypto_name
         self.folder = folder
         self.drop_na_subset = drop_na_subset
         self.add_time_columns = add_time_columns
+        self.drop_last = drop_last
+
+        self.price_columns = None
+        self.blockchain_data_columns = None
+        self.social_columns = None
 
     def _add_time_columns(self, all_info: pd.DataFrame) -> pd.DataFrame:
         all_info['time'] = pd.to_datetime(all_info['time'])
@@ -29,6 +45,10 @@ class CryptoCompareReader:
                                       thousands=',')
         social = pd.read_csv(os.path.join(self.folder, f"{self.crypto_name}_social.csv"), thousands=',')
 
+        self.price_columns = prices.drop(columns='time').columns.tolist()
+        self.blockchain_data_columns = blockchain_data.drop(columns='time').columns.tolist()
+        self.social_columns = social.drop(columns='time').columns.tolist()
+
         all_info = prices \
             .merge(blockchain_data, on='time', how='outer') \
             .merge(social, on='time', how='outer') \
@@ -42,23 +62,40 @@ class CryptoCompareReader:
 
         all_info.reset_index(drop=True, inplace=True)
 
+        if self.drop_last:
+            all_info = all_info.iloc[:-1]
+
         return all_info
+
+
+class ColumnLogTransformer(TransformerMixin):
+
+    def __init__(self, columns: Union[List[str], str]):
+        self.columns = columns
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X, y=None):
+        X[self.columns] = np.log(X[self.columns])
+        return X
 
 
 class LinearCoefficientTargetGenerator(TransformerMixin):
 
-    def __init__(self, source_column_name: str,window_size:int, regression_for_days_ahead: int, result_column_name: str = 'LinearCoeffTarget'):
+    def __init__(self, source_column_name: str, regression_for_days_ahead: int,
+                 result_column_name: str = 'LinearCoeffTarget',
+                 classifier_borders: Optional[Union[Tuple[float, float], Tuple[float]]] = None):
         self.source_column_name = source_column_name
-        self.window_size = window_size
         self.for_days_ahead = regression_for_days_ahead
         self.result_column_name = result_column_name
+        self.classifier_borders = classifier_borders
 
     def fit(self, X, y=None, **kwargs):
         return self
 
     def transform(self, X, y=None, **kwargs):
         def calc_coeffs(x):
-
             shifted = x.to_numpy() - x.iloc[0]
 
             x = np.array(list(range(len(shifted))))
@@ -67,14 +104,29 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
             slope, _, _, _ = np.linalg.lstsq(x, shifted)
             return slope
 
-        series = X[self.source_column_name].rolling(self.window_size).apply(lambda x: calc_coeffs(x))
+        series = X[self.source_column_name].rolling(self.for_days_ahead).apply(lambda x: calc_coeffs(x))
+        series.dropna(inplace=True)
+        if self.classifier_borders:  # TODO generalize for n target
+            # classes :  [-1,0,1] for [decrease,stationary,increase]
+            if len(self.classifier_borders) == 2:
+                series = series.apply(lambda value:
+                                      -1 if value < self.classifier_borders[0] else
+                                      1 if value > self.classifier_borders[1]
+                                      else 0)
+            #classes [-1,1] for down or up
+            elif len(self.classifier_borders) == 1:
+
+                series = series.apply(lambda value: -1 if value < self.classifier_borders[0] else 1)
+
+            else:
+                raise ValueError(f'invalid class borders {self.classifier_borders}')
 
         # drop na values at the beggining. This drops window_size-1 elements at the begginig when the window is invalid = not full
-        series.dropna(inplace=True)
 
 
-        #at the end we cannot compute the full regression for window_size days ahead because there is not enough data for the future
-        series = pd.concat([series,pd.Series(np.nan)*self.window_size]).reset_index(drop=True)
+        # at the end we cannot compute the full regression for window_size days ahead because there is not enough data for the future
+        padding=pd.Series([np.nan] * self.for_days_ahead)
+        series = pd.concat([series,padding],ignore_index=True)
 
         X[self.result_column_name] = series
 
@@ -177,4 +229,4 @@ class WindowsGenerator(TransformerMixin):
             x_data.append(features.to_numpy())
             y_data.append(targets.to_numpy())
 
-        return np.array(x_data),np.array(y_data)
+        return np.array(x_data), np.array(y_data)
