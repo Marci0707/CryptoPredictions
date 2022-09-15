@@ -110,13 +110,13 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
             # classes :  [-1,0,1] for [decrease,stationary,increase]
             if len(self.classifier_borders) == 2:
                 series = series.apply(lambda value:
-                                      -1 if value < self.classifier_borders[0] else
+                                      2 if value < self.classifier_borders[0] else
                                       1 if value > self.classifier_borders[1]
                                       else 0)
             #classes [-1,1] for down or up
             elif len(self.classifier_borders) == 1:
 
-                series = series.apply(lambda value: -1 if value < self.classifier_borders[0] else 1)
+                series = series.apply(lambda value: 0 if value < self.classifier_borders[0] else 1)
 
             else:
                 raise ValueError(f'invalid class borders {self.classifier_borders}')
