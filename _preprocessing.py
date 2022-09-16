@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.base import TransformerMixin
+from sklearn.linear_model import LinearRegression
 
 
 def drop_columns_deemed_as_useless(df: pd.DataFrame):
@@ -95,24 +96,33 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
         return self
 
     def transform(self, X, y=None, **kwargs):
+
+        lm = LinearRegression(fit_intercept=False)
+
         def calc_coeffs(x):
-            shifted = x.to_numpy() - x.iloc[0]
+            scaled = (x.to_numpy() - x.iloc[0]) / np.std(x)
+            #
+            # x = np.array(list(range(len(shifted))))
+            # x = x[:, np.newaxis]
+            #
+            # slope, _, _, _ = np.linalg.lstsq(x, shifted)
 
-            x = np.array(list(range(len(shifted))))
-            x = x[:, np.newaxis]
-
-            slope, _, _, _ = np.linalg.lstsq(x, shifted)
-            return slope
+            lm.fit(np.array(list(range(len(scaled)))).reshape(-1, 1), scaled)
+            return lm.coef_[0]
 
         series = X[self.source_column_name].rolling(self.for_days_ahead).apply(lambda x: calc_coeffs(x))
         series.dropna(inplace=True)
+
+        X['debug'] = series
+
         if self.classifier_borders:  # TODO generalize for n target
             # classes :  [-1,0,1] for [decrease,stationary,increase]
             if len(self.classifier_borders) == 2:
+
                 series = series.apply(lambda value:
-                                      2 if value < self.classifier_borders[0] else
-                                      1 if value > self.classifier_borders[1]
-                                      else 0)
+                                      0 if value < self.classifier_borders[0] else
+                                      2 if value > self.classifier_borders[1]
+                                      else 1)
             #classes [-1,1] for down or up
             elif len(self.classifier_borders) == 1:
 
