@@ -31,16 +31,9 @@ def main():
 
     df = drop_columns_deemed_as_useless(df)
 
-    social_columns = [col for col in reader.social_columns if col in df.columns]
-    prices_columns = [col for col in reader.price_columns if col in df.columns]
-    blockchain_data_columns = [col for col in reader.blockchain_data_columns if col in df.columns]
-
-    other_columns = [col for col in df.columns if col not in set(social_columns+prices_columns+blockchain_data_columns)]
-
-    print(social_columns,len(social_columns)) #['reddit_subscribers', 'reddit_active_users', 'reddit_posts_per_hour', 'reddit_posts_per_day', 'reddit_comments_per_hour', 'reddit_comments_per_day'] 6
-    print(prices_columns,len(prices_columns)) # ['high', 'low', 'close', 'BTCTradedToUSD', 'USDTradedToBTC'] 5
-    print(blockchain_data_columns,len(blockchain_data_columns)) #['new_addresses', 'active_addresses', 'transaction_count', 'large_transaction_count', 'average_transaction_value', 'block_height', 'hashrate', 'difficulty', 'block_time', 'block_size', 'current_supply'] 11
-    print(other_columns,len(other_columns)) #['time', 'dayOfTheWeek', 'monthOfTheYear'] 3
+    social_columns = [col for col in reader.social_columns if col in df.columns]#['reddit_subscribers', 'reddit_active_users', 'reddit_posts_per_hour', 'reddit_posts_per_day', 'reddit_comments_per_hour', 'reddit_comments_per_day'] 6
+    prices_columns = [col for col in reader.price_columns if col in df.columns] #['new_addresses', 'active_addresses', 'transaction_count', 'large_transaction_count', 'average_transaction_value', 'block_height', 'hashrate', 'difficulty', 'block_time', 'block_size', 'current_supply'] 11
+    blockchain_data_columns = [col for col in reader.blockchain_data_columns if col in df.columns] #['time', 'dayOfTheWeek', 'monthOfTheYear'] 3
 
 
 

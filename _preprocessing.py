@@ -8,14 +8,23 @@ from sklearn.base import TransformerMixin
 from sklearn.linear_model import LinearRegression
 
 
-def drop_columns_deemed_as_useless(df: pd.DataFrame):
+# used previously drop_columns_deemed_as_useless() but didnt wanna break older code
+def get_not_used_columns(df) -> List[str]:
     twitter_cols = df.filter(regex='twitter').columns.tolist()
     facebook_cols = df.filter(regex='fb_').columns.tolist()
-    cryptocompare_columns = ['comments', 'posts', 'followers']
+    cryptocompare_columns = ['comments', 'posts', 'followers']  # site data
     almost_duplicates = ['open']  # same as previous day close
     all_time_columns = df.filter(regex='all_time').columns.tolist()  # we have delta columns from these as well
 
-    return df.drop(columns=twitter_cols + facebook_cols + cryptocompare_columns + almost_duplicates + all_time_columns)
+    consequence_columns = ['hashrate', 'difficulty', 'block_time',
+                           'block_size']  # these are direct consequences of transactions
+
+    return twitter_cols + facebook_cols + cryptocompare_columns + almost_duplicates + all_time_columns + consequence_columns
+
+
+def drop_columns_deemed_as_useless(df: pd.DataFrame):
+    columns = get_not_used_columns(df)
+    return df.drop(columns=columns)
 
 
 class CryptoCompareReader:
@@ -71,6 +80,32 @@ class CryptoCompareReader:
 
 class ColumnLogTransformer(TransformerMixin):
 
+    def __init__(self, columns: Union[List[str], str] = None, only_from_first_nonzero: Union[List[str], str] = None,
+                 add_one=False):
+        self.columns = columns
+        self.only_from_first_nonzero = only_from_first_nonzero
+        self.add_one = add_one
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X, y=None):
+
+        og = X.copy(deep=True)
+
+        # to avoid log(0)
+        shift = 1 if self.add_one else 0
+
+        if self.columns is None:
+            X = np.log(X + shift)
+        else:
+            X[self.columns] = np.log(X[self.columns] + shift)
+        indices = np.isinf(X[['high', 'low', 'close']]).any(1)
+        return X
+
+
+class ColumnDropper(TransformerMixin):
+
     def __init__(self, columns: Union[List[str], str]):
         self.columns = columns
 
@@ -78,7 +113,63 @@ class ColumnLogTransformer(TransformerMixin):
         return self
 
     def transform(self, X, y=None):
-        X[self.columns] = np.log(X[self.columns])
+        X.drop(columns=self.columns, inplace=True)
+        return X
+
+
+class TransformerWrapper(TransformerMixin):
+    """for sklearn transformers whose outputs are numpy arrays"""
+
+
+    def __init__(self, transformer, columns_to_transform: List[str]):
+        self.transformer = transformer
+        self.columns_to_transform = columns_to_transform
+
+    def fit(self, X, y=None):
+        print("as")
+        return self.transformer.fit(X[self.columns_to_transform], y)
+
+    def transform(self, X, y=None):
+        values = self.transformer.transform(X[self.columns_to_transform], y)
+        return pd.DataFrame(values,columns=self.columns_to_transform)
+
+
+
+class ManualFeatureEngineer:
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        # there is a week (2011-jun.20-25) where the traded value is strangely 0.0 for all days (see insights.ipynb):
+        X.loc[X["BTCTradedToUSD"] == 0.0, 'BTCTradedToUSD'] = (X["BTCTradedToUSD"].shift(7) + X["BTCTradedToUSD"].shift(
+            -7)) / 2.0
+
+        # want to reduce dimensions
+        X['daily_movement'] = X['high'] - X['low']
+        # X.drop(columns=['high', 'low'], inplace=True)
+
+        # this way taking log is not needed. there are a lot of zeros.
+        # it matches the distribution of the large_transaction_count (see feature_engineering.ipynb)
+        X['large_transaction_count'] = X['large_transaction_count'] / X['transaction_count']
+
+        return X
+
+
+class DiffTransformer(TransformerMixin):
+
+    def __init__(self, columns: Union[List[str], str] = None):
+        self.columns = columns
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X, y=None):
+
+        if self.columns:
+            X[self.columns] = X[self.columns].diff()
+        else:
+            X = X.diff()
         return X
 
 
@@ -113,7 +204,7 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
         series = X[self.source_column_name].rolling(self.for_days_ahead).apply(lambda x: calc_coeffs(x))
         series.dropna(inplace=True)
 
-        X['debug'] = series
+        X['debug'] = series  # TODO remove
 
         if self.classifier_borders:  # TODO generalize for n target
             # classes :  [-1,0,1] for [decrease,stationary,increase]
@@ -123,7 +214,7 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
                                       0 if value < self.classifier_borders[0] else
                                       2 if value > self.classifier_borders[1]
                                       else 1)
-            #classes [-1,1] for down or up
+            # classes [-1,1] for down or up
             elif len(self.classifier_borders) == 1:
 
                 series = series.apply(lambda value: 0 if value < self.classifier_borders[0] else 1)
@@ -133,10 +224,9 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
 
         # drop na values at the beggining. This drops window_size-1 elements at the begginig when the window is invalid = not full
 
-
-        # at the end we cannot compute the full regression for window_size days ahead because there is not enough data for the future
-        padding=pd.Series([np.nan] * self.for_days_ahead)
-        series = pd.concat([series,padding],ignore_index=True)
+        # at the end we cannot compute the full regression for window_size days ahead because there is not enough splits for the future
+        padding = pd.Series([np.nan] * self.for_days_ahead)
+        series = pd.concat([series, padding], ignore_index=True)
 
         X[self.result_column_name] = series
 
