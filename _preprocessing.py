@@ -1,10 +1,11 @@
 import os
-from typing import Sequence, Optional, List, Tuple, Union
+from typing import Sequence, Optional, List, Tuple, Union, Callable
 
 import numpy as np
 import pandas as pd
 from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.base import TransformerMixin
+from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 
 
@@ -91,8 +92,6 @@ class ColumnLogTransformer(TransformerMixin):
 
     def transform(self, X, y=None):
 
-        og = X.copy(deep=True)
-
         # to avoid log(0)
         shift = 1 if self.add_one else 0
 
@@ -100,7 +99,6 @@ class ColumnLogTransformer(TransformerMixin):
             X = np.log(X + shift)
         else:
             X[self.columns] = np.log(X[self.columns] + shift)
-        indices = np.isinf(X[['high', 'low', 'close']]).any(1)
         return X
 
 
@@ -117,22 +115,38 @@ class ColumnDropper(TransformerMixin):
         return X
 
 
-class TransformerWrapper(TransformerMixin):
+class Pandanizer(TransformerMixin):
     """for sklearn transformers whose outputs are numpy arrays"""
 
-
-    def __init__(self, transformer, columns_to_transform: List[str]):
-        self.transformer = transformer
-        self.columns_to_transform = columns_to_transform
+    def __init__(self, columns: List[str]):
+        self.columns = columns
 
     def fit(self, X, y=None):
-        print("as")
-        return self.transformer.fit(X[self.columns_to_transform], y)
+        return self
 
     def transform(self, X, y=None):
-        values = self.transformer.transform(X[self.columns_to_transform], y)
-        return pd.DataFrame(values,columns=self.columns_to_transform)
+        df = pd.DataFrame(data=X, columns=self.columns)
 
+        return df
+
+
+class PCAFromFirstValidIndex(PCA):
+
+    def fit(self, X, y=None):
+        first_valid_index = X.first_valid_index()
+        return super().fit(X.iloc[first_valid_index:], y)
+
+    def fit_transform(self, X, y=None):
+        first_valid_index = X.first_valid_index()
+
+
+        pca_result = super().fit_transform(X.iloc[first_valid_index:], y)
+
+        pca_result = pd.DataFrame(data=pca_result,columns=list(range(pca_result.shape[1])))
+
+        padding = pd.DataFrame(pd.NA,index=list(range(first_valid_index)),columns=list(range(pca_result.shape[1])))
+        concat_res = pd.concat([padding,pca_result],axis=0)
+        return concat_res
 
 
 class ManualFeatureEngineer:
@@ -158,18 +172,22 @@ class ManualFeatureEngineer:
 
 class DiffTransformer(TransformerMixin):
 
-    def __init__(self, columns: Union[List[str], str] = None):
+    def __init__(self, columns: Union[List[str], str] = None,replace_nan_to_zeros=False):
         self.columns = columns
+        self.replace_nan_to_zeros = replace_nan_to_zeros #future transformers cannot always handler nan values in first row
 
     def fit(self, X, y=None):
         return self
 
     def transform(self, X, y=None):
-
         if self.columns:
             X[self.columns] = X[self.columns].diff()
         else:
             X = X.diff()
+
+        if self.replace_nan_to_zeros:
+            X = X.replace(np.nan,0.0)
+
         return X
 
 
