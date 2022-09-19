@@ -14,8 +14,8 @@ def main():
         df['time'] = pd.to_datetime(df['time'])
         df_train = df.loc[df.time.dt.year < split_at_year].reset_index(drop=True)
         df_test = df.loc[df.time.dt.year >= split_at_year].reset_index(drop=True)
-        df_test.to_csv(f'../splits/test/{name}.csv')
-        df_train.to_csv(f'../splits/train/{name}.csv')
+        df_test.to_csv(f'../splits/test/{name}.csv',index=False)
+        df_train.to_csv(f'../splits/train/{name}.csv',index=False)
 
 
 if __name__ == '__main__':

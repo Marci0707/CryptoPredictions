@@ -139,13 +139,12 @@ class PCAFromFirstValidIndex(PCA):
     def fit_transform(self, X, y=None):
         first_valid_index = X.first_valid_index()
 
-
         pca_result = super().fit_transform(X.iloc[first_valid_index:], y)
 
-        pca_result = pd.DataFrame(data=pca_result,columns=list(range(pca_result.shape[1])))
+        pca_result = pd.DataFrame(data=pca_result, columns=list(range(pca_result.shape[1])))
 
-        padding = pd.DataFrame(pd.NA,index=list(range(first_valid_index)),columns=list(range(pca_result.shape[1])))
-        concat_res = pd.concat([padding,pca_result],axis=0)
+        padding = pd.DataFrame(pd.NA, index=list(range(first_valid_index)), columns=list(range(pca_result.shape[1])))
+        concat_res = pd.concat([padding, pca_result], axis=0)
         return concat_res
 
 
@@ -172,9 +171,9 @@ class ManualFeatureEngineer:
 
 class DiffTransformer(TransformerMixin):
 
-    def __init__(self, columns: Union[List[str], str] = None,replace_nan_to_zeros=False):
+    def __init__(self, columns: Union[List[str], str] = None, replace_nan_to_zeros=False):
         self.columns = columns
-        self.replace_nan_to_zeros = replace_nan_to_zeros #future transformers cannot always handler nan values in first row
+        self.replace_nan_to_zeros = replace_nan_to_zeros  # future transformers cannot always handler nan values in first row
 
     def fit(self, X, y=None):
         return self
@@ -186,7 +185,7 @@ class DiffTransformer(TransformerMixin):
             X = X.diff()
 
         if self.replace_nan_to_zeros:
-            X = X.replace(np.nan,0.0)
+            X = X.replace(np.nan, 0.0)
 
         return X
 
@@ -221,8 +220,6 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
 
         series = X[self.source_column_name].rolling(self.for_days_ahead).apply(lambda x: calc_coeffs(x))
         series.dropna(inplace=True)
-
-        X['debug'] = series  # TODO remove
 
         if self.classifier_borders:  # TODO generalize for n target
             # classes :  [-1,0,1] for [decrease,stationary,increase]
@@ -309,13 +306,37 @@ class SmoothedDerivativesGenerator(TransformerMixin):
         return X
 
 
+class ManualValidTargetDetector(TransformerMixin):
+
+    def __init__(self, invalidate_top_x_percent):
+        self.invalidate_top_x_percent = invalidate_top_x_percent
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X, y=None):
+
+
+        positive_reddit_change = X['reddit_comments_per_day'].diff().clip(lower=0)
+        price_change = np.abs(X['close'].pct_change())
+
+        result = positive_reddit_change.fillna(0) + 2 * price_change.fillna(0)
+
+        tops = result.sort_values(ascending=False)
+        invalid_n_rows = int(len(X) * self.invalidate_top_x_percent / 100.0)
+
+        invalid_indices = tops.iloc[:invalid_n_rows].index
+
+        X['is_valid_target'] = X.apply(lambda row: 1 if row.name not in invalid_indices else -1, axis=1)
+
+        return X
+
+
 class WindowsGenerator(TransformerMixin):
 
     def __init__(self, window_size: int, features: Sequence[str], targets: Sequence[str],
-                 ignore_targets_above_pct_change: Optional[List[Tuple[str, float]]] = None):
-        """if window_size == 10 then 9 of the rows will be used for predicting the 10th.
-        so the last row is always the target"""
-        self.ignore_targets_above_pct_change = ignore_targets_above_pct_change
+                 is_valid_target_col_name: str):
+        self.is_valid_target_col_name = is_valid_target_col_name
         self.window_size = window_size
         self.features = features
         self.targets = targets
@@ -324,18 +345,11 @@ class WindowsGenerator(TransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame, y=None) -> Tuple[np.ndarray, np.ndarray]:
-
-        banned_target_indices = set()
-        if self.ignore_targets_above_pct_change:
-
-            for column_name, pct in self.ignore_targets_above_pct_change:
-                abs_pct_changes = abs(X[column_name].pct_change()) * 100
-                idx_ls = list(X.loc[X[abs_pct_changes > pct].index].index)
-                banned_target_indices.update(idx_ls)
+        banned_target_indices = X.loc[X[self.is_valid_target_col_name] < 0].index
 
         indices = np.array(range(len(X)))
 
-        windows = sliding_window_view(indices, self.window_size)
+        windows = sliding_window_view(indices, self.window_size + 1)  # last one is the target
         filtered_windows = np.array([window for window in windows if window[-1] not in banned_target_indices])
 
         x_data = []
