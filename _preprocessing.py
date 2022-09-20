@@ -7,6 +7,43 @@ from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.base import TransformerMixin
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
+
+
+def inverse_scaler_subset(windowed_data: np.ndarray, scaler: StandardScaler, subset_to_inv_transform: Sequence[str],
+                          arr_col_names: Sequence[str]):
+
+
+    for col_to_inv_tr in subset_to_inv_transform:
+        col_idx_in_features = arr_col_names.index(col_to_inv_tr)
+        col_idx_in_scaler = list(scaler.feature_names_in_).index(col_to_inv_tr)
+
+        mean = scaler.mean_[col_idx_in_scaler]
+        var = scaler.var_[col_idx_in_scaler]
+
+
+        windowed_data[:,:,col_idx_in_features] = windowed_data[:,:,col_idx_in_features] * var + mean
+
+    return windowed_data
+
+
+
+def discretize(arr: np.ndarray, class_borders: Sequence[float]):
+    # TODO more optimal
+    def find_class(arr):
+        classes = np.zeros(shape=(len(arr), 1))
+        for value_idx, value in enumerate(arr):
+
+            above_last_border = True
+            for border_idx, border in enumerate(class_borders):
+                if value < border:
+                    classes[value_idx, 0] = border_idx
+                    above_last_border = False
+            if above_last_border:
+                classes[value_idx, 0] = len(class_borders)
+        return classes
+
+    return np.apply_along_axis(find_class, -1, arr)
 
 
 # used previously drop_columns_deemed_as_useless() but didnt wanna break older code
@@ -237,7 +274,7 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
             else:
                 raise ValueError(f'invalid class borders {self.classifier_borders}')
 
-        # drop na values at the beggining. This drops window_size-1 elements at the begginig when the window is invalid = not full
+        # drop na values at the beginning. This drops window_size-1 elements at the begginig when the window is invalid = not full
 
         # at the end we cannot compute the full regression for window_size days ahead because there is not enough splits for the future
         padding = pd.Series([np.nan] * self.for_days_ahead)
@@ -315,8 +352,6 @@ class ManualValidTargetDetector(TransformerMixin):
         return self
 
     def transform(self, X, y=None):
-
-
         positive_reddit_change = X['reddit_comments_per_day'].diff().clip(lower=0)
         price_change = np.abs(X['close'].pct_change())
 
@@ -340,12 +375,15 @@ class WindowsGenerator(TransformerMixin):
         self.window_size = window_size
         self.features = features
         self.targets = targets
+        self.banned_indices = []
 
     def fit(self, X, y=None):
         return self
 
     def transform(self, X: pd.DataFrame, y=None) -> Tuple[np.ndarray, np.ndarray]:
         banned_target_indices = X.loc[X[self.is_valid_target_col_name] < 0].index
+
+        self.banned_indices = list(banned_target_indices)
 
         indices = np.array(range(len(X)))
 
