@@ -88,9 +88,8 @@ def create_mlp_baseline(x_train, x_test, n_classes):
         Dense(units=150, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
         Dense(units=50, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
         Dense(units=25, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
-        Dropout(0.2),
+        Dropout(0.4),
         Dense(units=n_classes, activation='softmax')
     ])
-    model.compile(loss='categorical_crossentropy', optimizer=Adam(learning_rate=0.0001), metrics=['accuracy'])
 
     return model, x_train, x_test

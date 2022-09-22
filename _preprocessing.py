@@ -10,6 +10,9 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
 
 
+
+
+
 def inverse_scaler_subset(windowed_data: np.ndarray, scaler: StandardScaler, subset_to_inv_transform: Sequence[str],
                           arr_col_names: Sequence[str]):
 
@@ -230,7 +233,7 @@ class DiffTransformer(TransformerMixin):
 class LinearCoefficientTargetGenerator(TransformerMixin):
 
     def __init__(self, source_column_name: str, regression_for_days_ahead: int,
-                 result_column_name: str = 'LinearCoeffTarget',
+                 result_column_name: str = 'LinearCoeffTarget_target',
                  classifier_borders: Optional[Union[Tuple[float, float], Tuple[float]]] = None):
         self.source_column_name = source_column_name
         self.for_days_ahead = regression_for_days_ahead
@@ -246,11 +249,6 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
 
         def calc_coeffs(x):
             scaled = (x.to_numpy() - x.iloc[0]) / np.std(x)
-            #
-            # x = np.array(list(range(len(shifted))))
-            # x = x[:, np.newaxis]
-            #
-            # slope, _, _, _ = np.linalg.lstsq(x, shifted)
 
             lm.fit(np.array(list(range(len(scaled)))).reshape(-1, 1), scaled)
             return lm.coef_[0]
@@ -258,29 +256,36 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
         series = X[self.source_column_name].rolling(self.for_days_ahead).apply(lambda x: calc_coeffs(x))
         series.dropna(inplace=True)
 
+
+        # at the end we cannot compute the full regression for window_size days ahead because there is not enough timestamp for the future
+        padding = pd.Series([np.nan] * (self.for_days_ahead-1))
+        target_column = pd.concat([series, padding], ignore_index=True)
+        feature_column = pd.concat([padding,series], ignore_index=True)
+
+
         if self.classifier_borders:  # TODO generalize for n target
             # classes :  [-1,0,1] for [decrease,stationary,increase]
             if len(self.classifier_borders) == 2:
 
-                series = series.apply(lambda value:
-                                      0 if value < self.classifier_borders[0] else
-                                      2 if value > self.classifier_borders[1]
-                                      else 1)
+                target_column = target_column.apply(lambda value:
+                                                    pd.NA if pd.isna(value) else
+                                                    0 if value < self.classifier_borders[0] else
+                                                    2 if value > self.classifier_borders[1]
+                                                    else 1)
             # classes [-1,1] for down or up
             elif len(self.classifier_borders) == 1:
 
-                series = series.apply(lambda value: 0 if value < self.classifier_borders[0] else 1)
+                target_column = target_column.apply(lambda value:
+                                                    pd.NA if pd.isna(value) else
+                                                    0 if value < self.classifier_borders[0]
+                                                    else 1)
 
             else:
                 raise ValueError(f'invalid class borders {self.classifier_borders}')
 
-        # drop na values at the beginning. This drops window_size-1 elements at the begginig when the window is invalid = not full
 
-        # at the end we cannot compute the full regression for window_size days ahead because there is not enough splits for the future
-        padding = pd.Series([np.nan] * self.for_days_ahead)
-        series = pd.concat([series, padding], ignore_index=True)
-
-        X[self.result_column_name] = series
+        X[self.result_column_name] = target_column
+        X[self.result_column_name.replace('target','feature')] = feature_column
 
         return X
 
