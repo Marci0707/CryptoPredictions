@@ -8,7 +8,7 @@ import tensorflow.python.keras.models
 from keras.callbacks import History
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix
-
+import matplotlib.dates as mdates
 from _common import TrainingConfig
 
 
@@ -30,11 +30,36 @@ def save_model(model : tensorflow.keras.models.Model, config:TrainingConfig,trai
     model.save(os.path.join(training_dir,'model'))
 
 
-def eval_results(y_preds, y_true,training_dir,class_borders=None):
+def _get_prediction_colors(ypred,ytrue):
+
+    n_classes = len(np.unique(ytrue))
+    if n_classes == 3:
+        colors = ['r','y','g']
+    elif n_classes == 4:
+        colors = ['maroon','darksalmon','palegreen','green']
+    elif n_classes == 5:
+        colors = ['maroon', 'darksalmon','yellow', 'palegreen', 'green']
+    else:
+        raise ValueError(f'too many classes to color nicely at the moment. {np.unique(ytrue)}')
+
+    good_prediction_alpha = 0.5
+    bad_prediction_alpha = 1
+    alphas = []
+    for i in range(len(ypred)):
+        alpha = good_prediction_alpha if ypred[i] == ytrue[i] else bad_prediction_alpha
+        alphas.append(alpha)
+    pred_colors = [colors[i] for i in ypred]
+    true_colors = [colors[i] for i in ytrue]
+
+    return colors,alphas,pred_colors,true_colors
+
+
+def eval_results(y_preds, y_true,test_data, training_dir,class_borders=None):
 
     y_preds = np.argmax(y_preds, axis=1)
     y_true = np.argmax(y_true, axis=1)
 
+    #plot confusion matrix
     labels = []
     for idx in range(len(class_borders)+1):
         if idx == 0:
@@ -53,8 +78,25 @@ def eval_results(y_preds, y_true,training_dir,class_borders=None):
     plt.xlabel('predicted label')
     plt.ylabel('true label')
     plt.savefig(os.path.join(training_dir,'confusion_matrix.png'))
+    plt.show()
 
 
+    #plot predictions
+    colors,alphas,pred_colors,true_colors = _get_prediction_colors(y_preds,y_true)
+    fig,axes = plt.subplots(nrows=1,ncols=2)
+    plt.suptitle('prediction classes vs real classes')
+    for ax in axes:
+        ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=range(1, 12, 1)))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%b'))
+    axes[0].plot(test_data['time'], test_data["close"],alpha=alphas, c=pred_colors)
+    axes[0].set_title('predictions')
+    axes[1].plot(test_data['time'], test_data["close"],alpha=alphas, c=true_colors)
+    axes[0].set_title('true classes')
+    plt.legend()
+    plt.savefig('comparison.png')
+
+
+    #save results.json
     diffs = np.abs(y_preds - y_true)
     res = dict()
     with open(os.path.join(training_dir,'results.json'),'w') as f:
@@ -66,4 +108,8 @@ def eval_results(y_preds, y_true,training_dir,class_borders=None):
         res['n_classes'] = len(class_borders)+1
 
         f.write(json.dumps(res))
+
+
+
+
 
