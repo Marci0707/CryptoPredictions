@@ -3,7 +3,7 @@ import os
 from datetime import time
 
 import numpy as np
-from keras.optimizers import Adam
+from keras.optimizers import Adam, RMSprop, SGD
 import tensorflow as tf
 from sklearn.decomposition import PCA
 from tensorflow import keras
@@ -16,10 +16,10 @@ from sklearn.preprocessing import StandardScaler
 from _common import TrainingConfig
 from _preprocessing import CryptoCompareReader, ColumnLogTransformer, \
     get_not_used_columns, ColumnDropper, DiffTransformer, ManualFeatureEngineer, Pandanizer, \
-    PCAFromFirstValidIndex, LinearCoefficientTargetGenerator, ManualValidTargetDetector, WindowsGenerator, \
+    PCAFromFirstValidIndex, LinearCoefficientTargetGenerator, ManualValidTargetDetector, WindowGenerator, \
     inverse_scaler_subset
 from evaluation import viz_history, save_model, eval_results
-from models.baselines import RegressionPredictor, create_mlp_baseline
+from models.baselines import RegressionPredictor, create_mlp_baseline, create_lstm_baseline
 
 
 def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: StandardScaler, pca: PCA,
@@ -31,9 +31,9 @@ def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: S
     column_changer_pipeline = Pipeline(
         [
             ('manual_feature_engineer', ManualFeatureEngineer()),
-            ('manual_anomaly_detector', ManualValidTargetDetector(config.manual_invalidation_percentile)),
+            ('manual_anomaly_detector', ManualValidTargetDetector(config.manual_invalidation_percentile,config.window_size,config.regression_days)),
             ('regression_class_generator',
-             LinearCoefficientTargetGenerator('close', config.regression_days, 'slope_target',
+             LinearCoefficientTargetGenerator('close', config.regression_days,config.window_size, 'slope_target',
                                               classifier_borders=config.classifier_borders)),
             ('column_dropper', ColumnDropper(not_used_columns)),
         ]
@@ -83,18 +83,19 @@ def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: S
     test_data_tr = data_transformer_pipeline.transform(test_data_tr)
 
     final_feature_names = [col for col in train_data_tr.columns if col != 'is_valid_target' and col != 'slope_target']
-    window_generator = WindowsGenerator(window_size=config.window_size,
-                                        features=final_feature_names,
-                                        targets=['slope_target'],
-                                        is_valid_target_col_name='is_valid_target')
+    window_generator = WindowGenerator(window_size=config.window_size,
+                                       features=final_feature_names,
+                                       targets=['slope_target'],
+                                       is_valid_target_col_name='is_valid_target')
 
     train_x, train_y = window_generator.fit_transform(train_data_tr)
+    window_generator.predicted_indices = []
     test_x, test_y = window_generator.transform(test_data_tr)
 
     test_y = keras.utils.to_categorical(test_y)
     train_y = keras.utils.to_categorical(train_y)
 
-    return train_x, train_y, test_x, test_y, final_feature_names, scaler,
+    return train_x, train_y, test_x, test_y, final_feature_names, scaler,window_generator
 
 
 def main():
@@ -109,11 +110,11 @@ def main():
 
     training_config = TrainingConfig(
         training_id=training_id,
-        regression_days=10,
+        regression_days=5,
         classifier_borders=(-0.2, 0.2),
-        manual_invalidation_percentile=5,
-        window_size=14,
-        optimizer=Adam(learning_rate=0.00001)
+        manual_invalidation_percentile=2,
+        window_size=10,
+        optimizer=Adam(learning_rate=0.0001)
     )
 
     training_dir = os.path.join('..', 'trainings', training_id)
@@ -123,22 +124,24 @@ def main():
     pca = PCAFromFirstValidIndex(n_components=3)
     scaler = StandardScaler()
 
-    train_x, train_y, test_x, test_y, feature_names, scaler  = preprocess_data(
+    x_train, y_train, x_test, y_test, feature_names, scaler,window_generator  = preprocess_data(
         train_data=train_data.copy(deep=True), test_data=test_data.copy(deep=True),
         scaler=scaler,
         pca=pca,
         config=training_config)
 
-    model, x_train, x_test = create_mlp_baseline(train_x, test_x, len(training_config.classifier_borders) + 1)
+    model = create_lstm_baseline(x_train, len(training_config.classifier_borders) + 1)
+    # model = create_mlp_baseline(x_train, len(training_config.classifier_borders) + 1)
     model.compile(loss='categorical_crossentropy', optimizer=training_config.optimizer, metrics=['accuracy'])
 
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=3)
-    hist = model.fit(x_train, train_y, epochs=2, validation_split=0.2, callbacks=[early_stopping])
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=6,restore_best_weights=True)
+    hist = model.fit(x_train, y_train, epochs=30, validation_split=0.2, callbacks=[early_stopping], shuffle=True)
     y_preds = model.predict(x_test)
 
     save_model(model, training_config, training_dir)
     viz_history(hist, training_dir)
-    eval_results(y_preds, test_y,test_data.iloc[:-training_config.window_size+1], training_dir, class_borders=training_config.classifier_borders)
+    banned_indices = window_generator.banned_indices
+    eval_results(y_preds, y_test,test_data, training_dir,banned_indices,training_config.regression_days, class_borders=training_config.classifier_borders)
 
 
 if __name__ == '__main__':

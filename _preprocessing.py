@@ -232,11 +232,12 @@ class DiffTransformer(TransformerMixin):
 
 class LinearCoefficientTargetGenerator(TransformerMixin):
 
-    def __init__(self, source_column_name: str, regression_for_days_ahead: int,
+    def __init__(self, source_column_name: str, regression_for_days_ahead: int,window_size:int,
                  result_column_name: str = 'LinearCoeffTarget_target',
                  classifier_borders: Optional[Union[Tuple[float, float], Tuple[float]]] = None):
         self.source_column_name = source_column_name
         self.for_days_ahead = regression_for_days_ahead
+        self.window_size = window_size
         self.result_column_name = result_column_name
         self.classifier_borders = classifier_borders
 
@@ -248,26 +249,33 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
         lm = LinearRegression(fit_intercept=False)
 
         def calc_coeffs(x):
-            scaled = (x.to_numpy() - x.iloc[0]) / np.std(x)
 
-            lm.fit(np.array(list(range(len(scaled)))).reshape(-1, 1), scaled)
+            if np.std(x) == 0:
+                return 0
+
+            scaled = (x.to_numpy() - x.iloc[0]) / np.std(x)
+            try:
+                lm.fit(np.array(list(range(len(scaled)))).reshape(-1, 1), scaled)
+            except ValueError as e:
+                print(scaled)
+                raise e
+
             return lm.coef_[0]
 
         series = X[self.source_column_name].rolling(self.for_days_ahead).apply(lambda x: calc_coeffs(x))
-        series.dropna(inplace=True)
-
 
         # at the end we cannot compute the full regression for window_size days ahead because there is not enough timestamp for the future
-        padding = pd.Series([np.nan] * (self.for_days_ahead-1))
-        target_column = pd.concat([series, padding], ignore_index=True)
-        feature_column = pd.concat([padding,series], ignore_index=True)
-
+        target = series.copy(deep=True)
+        feature = series.copy(deep=True) #this can remain unchanged because its the regression of the past n days
+        target.iloc[:self.window_size+self.for_days_ahead-2] = pd.NA #the target of the first 14 days is the regression for 14:24 days
+        target = target.iloc[self.for_days_ahead:].reset_index(drop=True) #slide it back so the first target will be in the 14th row (if winsize=14)
+        target = pd.concat([target,pd.Series([pd.NA]*self.for_days_ahead)],axis=0,ignore_index=True) # we dont know the regression for the future beyond the data
 
         if self.classifier_borders:  # TODO generalize for n target
             # classes :  [-1,0,1] for [decrease,stationary,increase]
             if len(self.classifier_borders) == 2:
 
-                target_column = target_column.apply(lambda value:
+                target = target.apply(lambda value:
                                                     pd.NA if pd.isna(value) else
                                                     0 if value < self.classifier_borders[0] else
                                                     2 if value > self.classifier_borders[1]
@@ -275,7 +283,7 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
             # classes [-1,1] for down or up
             elif len(self.classifier_borders) == 1:
 
-                target_column = target_column.apply(lambda value:
+                target = target.apply(lambda value:
                                                     pd.NA if pd.isna(value) else
                                                     0 if value < self.classifier_borders[0]
                                                     else 1)
@@ -284,8 +292,8 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
                 raise ValueError(f'invalid class borders {self.classifier_borders}')
 
 
-        X[self.result_column_name] = target_column
-        X[self.result_column_name.replace('target','feature')] = feature_column
+        X[self.result_column_name] = target
+        X[self.result_column_name.replace('target','feature')] = feature
 
         return X
 
@@ -350,13 +358,17 @@ class SmoothedDerivativesGenerator(TransformerMixin):
 
 class ManualValidTargetDetector(TransformerMixin):
 
-    def __init__(self, invalidate_top_x_percent):
+    def __init__(self, invalidate_top_x_percent,window_size:int, regression_days:int):
         self.invalidate_top_x_percent = invalidate_top_x_percent
+        self.window_size = window_size
+        self.regression_days = regression_days
 
     def fit(self, X, y=None):
         return self
 
     def transform(self, X, y=None):
+
+        #filtering based on spikes in social media and prices
         positive_reddit_change = X['reddit_comments_per_day'].diff().clip(lower=0)
         price_change = np.abs(X['close'].pct_change())
 
@@ -367,12 +379,17 @@ class ManualValidTargetDetector(TransformerMixin):
 
         invalid_indices = tops.iloc[:invalid_n_rows].index
 
-        X['is_valid_target'] = X.apply(lambda row: 1 if row.name not in invalid_indices else -1, axis=1)
+        series = X.apply(lambda row: 1 if row.name not in invalid_indices else -1, axis=1)
 
+        #filtering based on architecture
+        series.iloc[:self.window_size-1] = -1 #cannot predict if there is not enough data behind
+        series.iloc[-self.regression_days:] = -1 #cannot predict if there is not enough data ahead
+
+        X['is_valid_target'] = series
         return X
 
 
-class WindowsGenerator(TransformerMixin):
+class WindowGenerator(TransformerMixin):
 
     def __init__(self, window_size: int, features: Sequence[str], targets: Sequence[str],
                  is_valid_target_col_name: str):
@@ -392,7 +409,7 @@ class WindowsGenerator(TransformerMixin):
 
         indices = np.array(range(len(X)))
 
-        windows = sliding_window_view(indices, self.window_size + 1)  # last one is the target
+        windows = sliding_window_view(indices, self.window_size)  # last one is the target
         filtered_windows = np.array([window for window in windows if window[-1] not in banned_target_indices])
 
         x_data = []
@@ -401,6 +418,7 @@ class WindowsGenerator(TransformerMixin):
             df_part = X.iloc[window]
             features = df_part.iloc[:-1][self.features]
             targets = df_part.iloc[-1][self.targets]
+
             x_data.append(features.to_numpy())
             y_data.append(targets.to_numpy())
 

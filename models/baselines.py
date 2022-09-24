@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 from keras import Sequential, Input
-from keras.layers import Dense, Flatten, TimeDistributed, Dropout
+from keras.layers import Dense, Flatten, TimeDistributed, Dropout, LSTM
 from keras.optimizers import Adam
 from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.linear_model import LinearRegression
@@ -69,27 +69,35 @@ class RandomBinaryPredictor:
 
 
 
+def create_lstm_baseline(x_train,n_classes):
+
+    model = Sequential([
+        Input(shape=(x_train.shape[1],x_train.shape[2])),
+        LSTM(units=16,activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1',return_sequences=True),
+        LSTM(units=16,activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1',return_sequences=True),
+        LSTM(units=16,activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1',return_sequences=False),
+        Dense(units=50 , activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Dense(units=32, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Dense(units=8, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Dense(units=n_classes, activation='softmax')
+    ])
+
+    return model
 
 
 
-
-def create_mlp_baseline(x_train, x_test, n_classes):
+def create_mlp_baseline(x_train, n_classes):
     # typically, data_shape ~(samples,17,17) = (samples,window,feature)
-
-
-    # x_train_reshaped = np.reshape(x_train,(x_train.shape[0],-1))
-    # x_test_reshaped = np.reshape(x_test,(x_test.shape[0],-1))
-    #
-
 
     model = Sequential([
         Input(shape=(x_train.shape[1],x_train.shape[2])),
         Flatten(),
-        Dense(units=150, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
-        Dense(units=50, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Dense(units=100, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Dense(units=40, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
         Dense(units=25, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Dense(units=30, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
         Dropout(0.4),
         Dense(units=n_classes, activation='softmax')
     ])
 
-    return model, x_train, x_test
+    return model
