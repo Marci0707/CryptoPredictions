@@ -3,6 +3,7 @@ import os
 from datetime import time
 
 import numpy as np
+from keras.callbacks import ReduceLROnPlateau
 from keras.optimizers import Adam, RMSprop, SGD
 import tensorflow as tf
 from sklearn.decomposition import PCA
@@ -134,8 +135,9 @@ def main():
     # model = create_mlp_baseline(x_train, len(training_config.classifier_borders) + 1)
     model.compile(loss='categorical_crossentropy', optimizer=training_config.optimizer, metrics=['accuracy'])
 
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=6,restore_best_weights=True)
-    hist = model.fit(x_train, y_train, epochs=30, validation_split=0.2, callbacks=[early_stopping], shuffle=True)
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=7,restore_best_weights=True)
+    lr_decay = ReduceLROnPlateau(monitor='val_accuracy',patience=3,factor=0.7, min_lr=1e-8)
+    hist = model.fit(x_train, y_train, epochs=30, validation_split=0.2, callbacks=[early_stopping,lr_decay], shuffle=True)
     y_preds = model.predict(x_test)
 
     save_model(model, training_config, training_dir)

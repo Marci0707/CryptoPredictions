@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 from keras import Sequential, Input
-from keras.layers import Dense, Flatten, TimeDistributed, Dropout, LSTM
+from keras.layers import Dense, Flatten, TimeDistributed, Dropout, LSTM, BatchNormalization
 from keras.optimizers import Adam
 from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.linear_model import LinearRegression
@@ -73,11 +73,14 @@ def create_lstm_baseline(x_train,n_classes):
 
     model = Sequential([
         Input(shape=(x_train.shape[1],x_train.shape[2])),
-        LSTM(units=16,activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1',return_sequences=True),
-        LSTM(units=16,activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1',return_sequences=True),
-        LSTM(units=16,activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1',return_sequences=False),
-        Dense(units=50 , activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        LSTM(units=32,activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1',return_sequences=True,recurrent_dropout=0.2),
+        BatchNormalization(),
+        LSTM(units=32,activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1',return_sequences=False,recurrent_dropout=0.2),
+        BatchNormalization(),
         Dense(units=32, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        BatchNormalization(),
+        Dense(units=32, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        BatchNormalization(),
         Dense(units=8, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
         Dense(units=n_classes, activation='softmax')
     ])
