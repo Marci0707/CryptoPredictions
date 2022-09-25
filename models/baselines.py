@@ -3,7 +3,8 @@ import random
 
 import numpy as np
 from keras import Sequential, Input
-from keras.layers import Dense, Flatten, TimeDistributed, Dropout, LSTM, BatchNormalization
+from keras.layers import Dense, Flatten, TimeDistributed, Dropout, LSTM, BatchNormalization, Conv2D, Conv1D, \
+    MaxPooling1D
 from keras.optimizers import Adam
 from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.linear_model import LinearRegression
@@ -88,12 +89,11 @@ def create_lstm_baseline(x_train,n_classes):
     return model
 
 
-
 def create_mlp_baseline(x_train, n_classes):
     # typically, data_shape ~(samples,17,17) = (samples,window,feature)
 
     model = Sequential([
-        Input(shape=(x_train.shape[1],x_train.shape[2])),
+        Input(shape=(None,x_train.shape[1],x_train.shape[2])),
         Flatten(),
         Dense(units=100, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
         Dense(units=40, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
@@ -104,3 +104,29 @@ def create_mlp_baseline(x_train, n_classes):
     ])
 
     return model
+
+
+def create_conv_baseline(x_train,n_classes):
+    model = Sequential([
+        Input(shape=(x_train.shape[1:])),
+        Conv2D(filters=8,kernel_size=(5,5),activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        BatchNormalization(),
+        Conv2D(filters=8,kernel_size=(3,3),activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        BatchNormalization(),
+        Conv2D(filters=8,kernel_size=(1,1),activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        BatchNormalization(),
+        Conv1D(filters=8,kernel_size=6,activation='relu',kernel_initializer='HeNormal'),
+        Conv1D(filters=8,kernel_size=3,activation='relu',kernel_initializer='HeNormal'),
+        Flatten(),
+        Dense(units=20, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        BatchNormalization(),
+        Dense(units=10, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        BatchNormalization(),
+        Dropout(0.3),
+        Dense(units=n_classes, activation='softmax')
+    ])
+
+    return model
+
+
+

@@ -268,7 +268,7 @@ class LinearCoefficientTargetGenerator(TransformerMixin):
         target = series.copy(deep=True)
         feature = series.copy(deep=True) #this can remain unchanged because its the regression of the past n days
         target.iloc[:self.window_size+self.for_days_ahead-2] = pd.NA #the target of the first 14 days is the regression for 14:24 days
-        target = target.iloc[self.for_days_ahead:].reset_index(drop=True) #slide it back so the first target will be in the 14th row (if winsize=14)
+        target = target.iloc[self.for_days_ahead-1:].reset_index(drop=True) #slide it back so the first target will be in the 14th row (if winsize=14)
         target = pd.concat([target,pd.Series([pd.NA]*self.for_days_ahead)],axis=0,ignore_index=True) # we dont know the regression for the future beyond the data
 
         if self.classifier_borders:  # TODO generalize for n target

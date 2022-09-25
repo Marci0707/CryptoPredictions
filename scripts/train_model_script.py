@@ -20,7 +20,7 @@ from _preprocessing import CryptoCompareReader, ColumnLogTransformer, \
     PCAFromFirstValidIndex, LinearCoefficientTargetGenerator, ManualValidTargetDetector, WindowGenerator, \
     inverse_scaler_subset
 from evaluation import viz_history, save_model, eval_results
-from models.baselines import RegressionPredictor, create_mlp_baseline, create_lstm_baseline
+from models.baselines import RegressionPredictor, create_mlp_baseline, create_lstm_baseline, create_conv_baseline
 
 
 def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: StandardScaler, pca: PCA,
@@ -115,12 +115,9 @@ def main():
         classifier_borders=(-0.2, 0.2),
         manual_invalidation_percentile=2,
         window_size=10,
-        optimizer=Adam(learning_rate=0.0001)
+        optimizer=Adam(learning_rate=0.0005)
     )
 
-    training_dir = os.path.join('..', 'trainings', training_id)
-    if not os.path.isdir(training_dir):
-        os.mkdir(training_dir)
 
     pca = PCAFromFirstValidIndex(n_components=3)
     scaler = StandardScaler()
@@ -131,13 +128,25 @@ def main():
         pca=pca,
         config=training_config)
 
-    model = create_lstm_baseline(x_train, len(training_config.classifier_borders) + 1)
+    # model = create_lstm_baseline(x_train, len(training_config.classifier_borders) + 1)
     # model = create_mlp_baseline(x_train, len(training_config.classifier_borders) + 1)
+
+    x_train = np.reshape(x_train, (*x_train.shape, 1))
+    x_test = np.reshape(x_test, (*x_test.shape, 1))
+    model = create_conv_baseline(x_train, len(training_config.classifier_borders) + 1)
+
+    print('x,y shapes',x_train.shape,y_train.shape)
     model.compile(loss='categorical_crossentropy', optimizer=training_config.optimizer, metrics=['accuracy'])
 
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=7,restore_best_weights=True)
-    lr_decay = ReduceLROnPlateau(monitor='val_accuracy',patience=3,factor=0.7, min_lr=1e-8)
-    hist = model.fit(x_train, y_train, epochs=30, validation_split=0.2, callbacks=[early_stopping,lr_decay], shuffle=True)
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=17,restore_best_weights=True)
+    lr_decay = ReduceLROnPlateau(monitor='val_accuracy',patience=5,factor=0.4, min_lr=1e-8)
+
+
+    training_dir = os.path.join('..', 'trainings', training_id)
+    if not os.path.isdir(training_dir):
+        os.mkdir(training_dir)
+
+    hist = model.fit(x_train, y_train, epochs=100, validation_split=0.2, callbacks=[early_stopping,lr_decay], shuffle=True)
     y_preds = model.predict(x_test)
 
     save_model(model, training_config, training_dir)
