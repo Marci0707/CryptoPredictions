@@ -1,0 +1,30 @@
+\documentclass[12pt]{article}
+\title{\vspace{-2.0cm}Summary}
+\begin{document}
+    \date{\vspace{-5ex}}
+    \maketitle
+    The importance and popularity of neural networks and deeplearning have been rapidly increasing in the past decades.
+    They are becoming the default tool to tackle challenging problems in more and more fields of machine
+    learning, reaching state-of-art results.\\
+    \indent One of most researched topics of machine learning is time series analysis and prediction where both
+    classical machine learning methods and deeplearning techniques are commonly used to achieve the best results.
+    While time series can be sorted into multiple categories, each having their own intricacies,
+    financial market predictions has proved to be a notoriously hard problem due to several reasons.
+    The data usually has a low signal-to-noise ratio (especially for short periods) and there are countless (external) factors,
+    some of which are random, such as political or economic events that usually cannot be foreseen.
+    The series may show patterns that are not time-invariant - if there is a predictive pattern, people will start abusing it,
+    causing the pattern itself to change.
+    These above make the preprocessing stage quite difficult to perform properly.\\
+    \indent Recent innovations in deeplearning architectures often implement an attention mechanism which makes
+    it possible for the neural network to focus on different parts of the input when creating different parts of the output.
+    This can be very useful when labeling objects on a picture (concentrating only around the context of the object to
+    decide its class) or for example when translating a sentence and the next word is heavily dependent only
+    on a subset of words in the sentence to be translated.
+    The backbone of most state-of-art solutions nowadays to image- or translation-related problems is
+    the Transformer model which uses the attention mechanism really effectively.\\
+    \indent In my work, I investigate the accuracy of the latter architecture when it comes to time series classification.
+    I attempt to predict the near future trends of Bitcoin prices using data from the Bitcoin-domain as well as
+    from social media activity since the cryptomarket is highly sensitive to hype and general talk about it.
+    I also implement some popular model types from classical machine learning and deeplearning to help me evaluate
+    the performance of the Transformer-inspired model.
+\end{document}
