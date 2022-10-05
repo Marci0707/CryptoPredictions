@@ -113,7 +113,10 @@ def eval_results(y_preds, y_true, test_data, training_dir, banned_indices: Seque
             label = f'{class_borders[idx - 1]} < slope < {class_borders[idx]}'
         labels.append(label)
 
+
+
     matrix = confusion_matrix(y_true, y_preds)
+    print(matrix)
     df_cm = pd.DataFrame(matrix, index=labels, columns=labels)
     plt.figure(figsize=(10, 7))
     sns.set(font_scale=1.4)  # for label size

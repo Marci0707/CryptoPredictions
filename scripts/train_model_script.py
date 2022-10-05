@@ -48,7 +48,7 @@ def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: S
     to_scale_columns.remove('slope_target')
 
     take_log_columns = ['new_addresses', 'active_addresses', 'transaction_count',
-                        'average_transaction_value', 'close',
+                        'average_transaction_value',
                         'BTCTradedToUSD', 'USDTradedToBTC', 'reddit_active_users',
                         'reddit_comments_per_day']
 
@@ -56,7 +56,7 @@ def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: S
         [
             ('log_taker', ColumnLogTransformer(take_log_columns, add_one=True)),
             ('diff_taker',
-             DiffTransformer(take_log_columns + ['block_height', 'current_supply'], replace_nan_to_zeros=True)),
+             DiffTransformer(take_log_columns + ['close','block_height', 'current_supply'], replace_nan_to_zeros=True)),
             ('scaler', ColumnTransformer(
                 [
                     ('scaler', scaler, to_scale_columns)

@@ -219,14 +219,14 @@ class DiffTransformer(TransformerMixin):
         return self
 
     def transform(self, X, y=None):
+
         if self.columns:
-            X[self.columns] = X[self.columns].diff()
+            X[self.columns] = X[self.columns].pct_change()
         else:
-            X = X.diff()
+            X = X.pct_change()
 
         if self.replace_nan_to_zeros:
-            X = X.replace(np.nan, 0.0)
-
+            X = X.replace([np.nan,np.inf,-np.inf], 0.0)
         return X
 
 
