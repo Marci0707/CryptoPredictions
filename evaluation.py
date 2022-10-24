@@ -36,7 +36,9 @@ def save_model(model: tensorflow.keras.models.Model, config: TrainingConfig, tra
     with open(os.path.join(training_dir, 'model_summary.txt'), 'w') as f:
         model.summary(print_fn=lambda x: f.write(x + '\n'))
 
-    model.save(os.path.join(training_dir, 'model'),save_format="h5")
+    # ws = model.get_layer('encoder_0')._multi_head_attention_layer.get_weights()
+    # np.save(os.path.join(training_dir, 'encoder_0_weights'), ws, allow_pickle=True)
+    model.save_weights(os.path.join(training_dir, 'model_weights.h5'),save_format="h5")
 
 
 def _get_prediction_colors(ypred, ytrue, banned_indices, test_data):

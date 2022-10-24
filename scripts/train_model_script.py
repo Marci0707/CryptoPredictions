@@ -4,23 +4,54 @@ from datetime import time
 
 import numpy as np
 from keras.callbacks import ReduceLROnPlateau
+from keras.losses import CategoricalCrossentropy
 from keras.optimizers import Adam, RMSprop, SGD
 import tensorflow as tf
 from sklearn.decomposition import PCA
-from tensorflow import keras
+from sklearn.metrics import balanced_accuracy_score
+from sklearn.utils.class_weight import compute_class_weight
+from tensorflow import keras, unique_with_counts
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from tensorflow.python.ops.losses.losses_impl import softmax_cross_entropy
+from tensorflow_addons.metrics import F1Score
 
 from _common import TrainingConfig
 from _preprocessing import CryptoCompareReader, ColumnLogTransformer, \
     get_not_used_columns, ColumnDropper, DiffTransformer, ManualFeatureEngineer, Pandanizer, \
     PCAFromFirstValidIndex, LinearCoefficientTargetGenerator, ManualValidTargetDetector, WindowGenerator, \
-    inverse_scaler_subset
+    inverse_scaler_subset, decompose_to_features
 from evaluation import viz_history, save_model, eval_results
 from models.baselines import RegressionPredictor, create_mlp_baseline, create_lstm_baseline, create_conv_baseline
+from models.transformers import create_2towers, create_stacked_encoder, create_encoder_block
+
+
+def balanced_accuracy(y_true,y_pred):
+    return balanced_accuracy_score(tf.argmax(y_true,axis=1),tf.argmax(y_pred,axis=1))
+
+
+
+
+def custom_loss(y_true, y_pred):
+    cat_cross_loss = CategoricalCrossentropy()(y_true, y_pred)
+    return cat_cross_loss
+
+    # all penalize same class predictions accross batch
+    y, idx, count = unique_with_counts(y_pred)
+    most_common_count = tf.math.reduce_max(count)
+    most_common_relative_freq = tf.math.divide(most_common_count, tf.size(y_pred))
+    penalty = tf.constant(0, dtype=tf.float32)
+    penality_border = 0.8
+
+    if most_common_relative_freq > penality_border:
+        penalty = tf.math.subtract(most_common_relative_freq, penality_border)
+        penalty = tf.math.divide(penalty, 1 - penality_border)
+        penalty = tf.cast(penalty, tf.float32)
+
+    return cat_cross_loss + penalty
 
 
 def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: StandardScaler, pca: PCA,
@@ -32,9 +63,11 @@ def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: S
     column_changer_pipeline = Pipeline(
         [
             ('manual_feature_engineer', ManualFeatureEngineer()),
-            ('manual_anomaly_detector', ManualValidTargetDetector(config.manual_invalidation_percentile,config.window_size,config.regression_days)),
+            ('manual_anomaly_detector',
+             ManualValidTargetDetector(config.manual_invalidation_percentile, config.window_size,
+                                       config.regression_days)),
             ('regression_class_generator',
-             LinearCoefficientTargetGenerator('close', config.regression_days,config.window_size, 'slope_target',
+             LinearCoefficientTargetGenerator('close', config.regression_days, config.window_size, 'slope_target',
                                               classifier_borders=config.classifier_borders)),
             ('column_dropper', ColumnDropper(not_used_columns)),
         ]
@@ -48,7 +81,6 @@ def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: S
     to_scale_columns.remove('slope_target')
 
     take_log_columns = ['new_addresses', 'active_addresses', 'transaction_count',
-                        'average_transaction_value',
                         'BTCTradedToUSD', 'USDTradedToBTC', 'reddit_active_users',
                         'reddit_comments_per_day']
 
@@ -56,7 +88,8 @@ def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: S
         [
             ('log_taker', ColumnLogTransformer(take_log_columns, add_one=True)),
             ('diff_taker',
-             DiffTransformer(take_log_columns + ['close','block_height', 'current_supply'], replace_nan_to_zeros=True)),
+             DiffTransformer(take_log_columns + ['close', 'block_height', 'current_supply'],
+                             replace_nan_to_zeros=True)),
             ('scaler', ColumnTransformer(
                 [
                     ('scaler', scaler, to_scale_columns)
@@ -96,7 +129,7 @@ def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: S
     test_y = keras.utils.to_categorical(test_y)
     train_y = keras.utils.to_categorical(train_y)
 
-    return train_x, train_y, test_x, test_y, final_feature_names, scaler,window_generator
+    return train_x, train_y, test_x, test_y, final_feature_names, scaler, window_generator
 
 
 def main():
@@ -113,46 +146,86 @@ def main():
         training_id=training_id,
         regression_days=5,
         classifier_borders=(-0.2, 0.2),
-        manual_invalidation_percentile=2,
+        manual_invalidation_percentile=0.7,
         window_size=10,
-        optimizer=Adam(learning_rate=0.0005)
+        optimizer=Adam(learning_rate=0.0001)
     )
-
 
     pca = PCAFromFirstValidIndex(n_components=3)
     scaler = StandardScaler()
 
-    x_train, y_train, x_test, y_test, feature_names, scaler,window_generator  = preprocess_data(
+    x_train, y_train, x_test, y_test, feature_names, scaler, window_generator = preprocess_data(
         train_data=train_data.copy(deep=True), test_data=test_data.copy(deep=True),
         scaler=scaler,
         pca=pca,
         config=training_config)
 
-    # model = create_lstm_baseline(x_train, len(training_config.classifier_borders) + 1)
+    np.save('../splits/train/x_preprocessed.npy', x_train)
+    np.save('../splits/train/y_preprocessed.npy', y_train)
+    np.save('../splits/test/x_preprocessed.npy', x_test)
+    np.save('../splits/test/y_preprocessed.npy', y_test)
+    print('x,y shapes', x_train.shape, y_train.shape)
+
+    inputs_train = [x_train]
+    inputs_test = [x_test]
+
+    ##-------choose a model--------#
+    # LSTM#
+    model = create_lstm_baseline(x_train, len(training_config.classifier_borders) + 1)
+
+    # MLP#
     # model = create_mlp_baseline(x_train, len(training_config.classifier_borders) + 1)
 
-    x_train = np.reshape(x_train, (*x_train.shape, 1))
-    x_test = np.reshape(x_test, (*x_test.shape, 1))
-    model = create_conv_baseline(x_train, len(training_config.classifier_borders) + 1)
+    # CONV#
+    # x_train = np.reshape(x_train, (*x_train.shape, 1))
+    # x_test = np.reshape(x_test, (*x_test.shape, 1))
+    # model = create_conv_baseline(x_train, len(training_config.classifier_borders) + 1)
 
-    print('x,y shapes',x_train.shape,y_train.shape)
-    model.compile(loss='categorical_crossentropy', optimizer=training_config.optimizer, metrics=['accuracy'])
+    # 2 TOWERS TRANSFORMER
+    # x_train_trans = np.transpose(x_train, (0, 2, 1))
+    # x_test_trans = np.transpose(x_test, (0, 2, 1))
+    # model = create_2towers(x_train, x_train_trans, len(training_config.classifier_borders) + 1)
+    # inputs_train = [x_train, x_train_trans]
+    # inputs_test = [x_test, x_test_trans]
 
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=17,restore_best_weights=True)
-    lr_decay = ReduceLROnPlateau(monitor='val_accuracy',patience=5,factor=0.4, min_lr=1e-8)
+    # STACKED ENCODERS
+    # model = create_stacked_encoder(x_train,len(training_config.classifier_borders)+1)
 
+
+    # ENCODER BLOCK
+    # inputs_train = x_train.reshape((x_train.shape[0],-1,1))
+    # inputs_test = x_test.reshape((x_test.shape[0],-1,1))
+    # inputs_train = x_train
+    # inputs_test = x_test
+    # model = create_encoder_block(inputs_train,len(training_config.classifier_borders)+1)
+
+
+    ##-------choose a model--------#
+    model.compile(loss=softmax_cross_entropy, optimizer=training_config.optimizer, metrics=['accuracy',F1Score(num_classes=len(training_config.classifier_borders)+1,average='macro')])
+
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=17, restore_best_weights=True)
+    lr_decay = ReduceLROnPlateau(monitor='val_accuracy', patience=5, factor=0.4, min_lr=1e-8)
 
     training_dir = os.path.join('..', 'trainings', training_id)
     if not os.path.isdir(training_dir):
         os.mkdir(training_dir)
 
-    hist = model.fit(x_train, y_train, epochs=100, validation_split=0.2, callbacks=[early_stopping,lr_decay], shuffle=True)
-    y_preds = model.predict(x_test)
+    y_integers = np.argmax(y_train, axis=1)
+    class_weights = compute_class_weight('balanced', classes=np.unique(y_integers), y=y_integers)
+    d_class_weights = dict(enumerate(class_weights))
+
+    hist = model.fit(inputs_train, y_train, epochs=100, validation_split=0.2, callbacks=[early_stopping, lr_decay],
+                     shuffle=True, class_weight=d_class_weights)
+    # hist = model.fit(x_train, y_train, epochs=100, validation_split=0.2, callbacks=[early_stopping,lr_decay], shuffle=True)
+
+    y_preds = model.predict(inputs_test)
+    # y_preds = model.predict(x_test)
 
     save_model(model, training_config, training_dir)
     viz_history(hist, training_dir)
     banned_indices = window_generator.banned_indices
-    eval_results(y_preds, y_test,test_data, training_dir,banned_indices,training_config.regression_days, class_borders=training_config.classifier_borders)
+    eval_results(y_preds, y_test, test_data, training_dir, banned_indices, training_config.regression_days,
+                 class_borders=training_config.classifier_borders)
 
 
 if __name__ == '__main__':

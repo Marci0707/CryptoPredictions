@@ -209,6 +209,24 @@ class ManualFeatureEngineer:
         return X
 
 
+def decompose_to_features(data):
+    """
+
+    :param data: data in shape: (samples, timesteps, features)
+    :return: array of features in shape  features , samples x 1 x timesteps)
+    """
+    swapped = np.swapaxes(data, -1, -2)
+
+    features = []
+    for feature_idx in range(swapped.shape[1]):
+        f = swapped[:,feature_idx,:]
+        f = f.reshape((*f.shape,1))
+        features.append(f)
+    features = np.array(features)
+    return features
+
+
+
 class DiffTransformer(TransformerMixin):
 
     def __init__(self, columns: Union[List[str], str] = None, replace_nan_to_zeros=False):
@@ -227,6 +245,9 @@ class DiffTransformer(TransformerMixin):
 
         if self.replace_nan_to_zeros:
             X = X.replace([np.nan,np.inf,-np.inf], 0.0)
+
+        X = X.round(1)
+
         return X
 
 
@@ -372,14 +393,21 @@ class ManualValidTargetDetector(TransformerMixin):
         positive_reddit_change = X['reddit_comments_per_day'].diff().clip(lower=0)
         price_change = np.abs(X['close'].pct_change())
 
-        result = positive_reddit_change.fillna(0) + 2 * price_change.fillna(0)
+        result = positive_reddit_change.fillna(0) + price_change.fillna(0)
 
         tops = result.sort_values(ascending=False)
         invalid_n_rows = int(len(X) * self.invalidate_top_x_percent / 100.0)
 
-        invalid_indices = tops.iloc[:invalid_n_rows].index
+        jumps = tops.iloc[:invalid_n_rows].index.tolist()
 
-        series = X.apply(lambda row: 1 if row.name not in invalid_indices else -1, axis=1)
+        invalids = []
+
+        for idx,i in enumerate(jumps):
+            for d in range(1,self.regression_days):
+                invalids.append(i-d)
+
+        self.jumps = jumps
+        series = X.apply(lambda row: 1 if row.name not in invalids else -1, axis=1)
 
         #filtering based on architecture
         series.iloc[:self.window_size-1] = -1 #cannot predict if there is not enough data behind

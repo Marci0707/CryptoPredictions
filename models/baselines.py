@@ -75,18 +75,18 @@ def create_lstm_baseline(x_train,n_classes):
 
     model = Sequential([
         Input(shape=(x_train.shape[1],x_train.shape[2])),
-        LSTM(units=20,activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1',return_sequences=True,recurrent_dropout=0.2),
+        LSTM(units=20,return_sequences=True),
         BatchNormalization(),
-        LSTM(units=20, activation='relu', kernel_initializer='HeNormal', kernel_regularizer='l1', return_sequences=True,recurrent_dropout=0.2),
+        LSTM(units=20, return_sequences=True),
         BatchNormalization(),
-        LSTM(units=20,activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1',return_sequences=False,recurrent_dropout=0.2),
+        LSTM(units=20,return_sequences=False),
         BatchNormalization(),
         Flatten(),
         Dense(units=10, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
         BatchNormalization(),
         Dense(units=10, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
         BatchNormalization(),
-        Dropout(0.4),
+        Dropout(0.3),
         Dense(units=n_classes, activation='softmax')
     ])
 
