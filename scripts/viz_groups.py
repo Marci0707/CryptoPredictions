@@ -37,7 +37,7 @@ def viz_bias_variance(accuracies):
 
     data = pd.DataFrame(data,columns = ['Bias','Variance','Model Type'])
 
-    sns.scatterplot(data=data, hue='Model Type', x='Bias', y='Variance')
+    sns.scatterplot(data=data, hue='Model Type', x='Bias', y='Variance',s=400)
     plt.savefig(r'../group_evals/bias_var.png')
 
 
