@@ -30,11 +30,15 @@ def main(group_to_eval):
 
     tricoords = []
 
+    preds_all = []
+
     for train_id in os.listdir(trainings_dir):
         if group_to_eval not in train_id:
             continue
 
         y_preds = np.load(os.path.join(trainings_dir,train_id,'preds.npy'))
+
+        preds_all.append(y_preds.tolist())
 
         accuracies.append(accuracy_score(y_true,y_preds))
         f1scores.append(f1_score(y_true,y_preds,average ='macro'))
@@ -43,11 +47,13 @@ def main(group_to_eval):
         tricoords.append(coord)
 
 
+
     group_results = {
         'f1scores' : f1scores,
         'accs' : accuracies,
         'tricoords' : tricoords,
-        'var' : np.std(y_preds)
+        'var' : np.std(y_preds),
+        'preds': preds_all
     }
 
 
@@ -63,5 +69,5 @@ def main(group_to_eval):
 
 
 if __name__ == '__main__':
-    group_to_eval = 'mlp_2022_10_25'
+    group_to_eval = 'encoder_block_2022_10_25'
     main(group_to_eval)

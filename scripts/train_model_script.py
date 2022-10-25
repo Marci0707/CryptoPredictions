@@ -209,7 +209,7 @@ def main(training_group_id:str,model_name:str):
 
 if __name__ == '__main__':
     n_runs = 20
-    model_name = 'cnn'
+    model_name = 'encoder_block'
     group = f'{model_name}_2022_10_25'
     for run in range(n_runs):
         main(group,model_name)
