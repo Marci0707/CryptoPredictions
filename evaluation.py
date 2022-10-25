@@ -38,7 +38,7 @@ def save_model(model: tensorflow.keras.models.Model, config: TrainingConfig, tra
 
     # ws = model.get_layer('encoder_0')._multi_head_attention_layer.get_weights()
     # np.save(os.path.join(training_dir, 'encoder_0_weights'), ws, allow_pickle=True)
-    model.save_weights(os.path.join(training_dir, 'model_weights.h5'),save_format="h5")
+    model.save_weights(os.path.join(training_dir, 'model_weights.h5'), save_format="h5")
 
 
 def _get_prediction_colors(ypred, ytrue, banned_indices, test_data):
@@ -104,6 +104,8 @@ def eval_results(y_preds, y_true, test_data, training_dir, banned_indices: Seque
 
         f.write(json.dumps(res))
 
+    np.save(os.path.join(training_dir, 'preds.npy'), y_preds, allow_pickle=True)
+
     # plot confusion matrix
     labels = []
     for idx in range(len(class_borders) + 1):
@@ -115,8 +117,6 @@ def eval_results(y_preds, y_true, test_data, training_dir, banned_indices: Seque
             label = f'{class_borders[idx - 1]} < slope < {class_borders[idx]}'
         labels.append(label)
 
-
-
     matrix = confusion_matrix(y_true, y_preds)
     print(matrix)
     df_cm = pd.DataFrame(matrix, index=labels, columns=labels)
@@ -126,7 +126,6 @@ def eval_results(y_preds, y_true, test_data, training_dir, banned_indices: Seque
     plt.xlabel('predicted label')
     plt.ylabel('true label')
     plt.savefig(os.path.join(training_dir, 'confusion_matrix.png'))
-
 
     # plot prediction comparisons
     colors, pred_colors, true_colors = _get_prediction_colors(y_preds, y_true, banned_indices, test_data)
@@ -155,7 +154,6 @@ def eval_results(y_preds, y_true, test_data, training_dir, banned_indices: Seque
 
     plt.tight_layout()
     plt.savefig(os.path.join(training_dir, 'comparison.png'))
-
 
     # plot distributions
     pred_distr = {x: list(y_preds).count(x) for x in y_preds}

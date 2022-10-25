@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow
 from keras import Sequential, Input
 from keras.layers import Dense, Flatten, TimeDistributed, Dropout, LSTM, BatchNormalization, Conv2D, Conv1D, \
-    MaxPooling1D
+    MaxPooling1D, LayerNormalization
 from keras.optimizers import Adam
 from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.linear_model import LinearRegression
@@ -74,17 +74,15 @@ class RandomBinaryPredictor:
 def create_lstm_baseline(x_train,n_classes):
 
     model = Sequential([
-        Input(shape=(x_train.shape[1],x_train.shape[2])),
+        Input(shape=(x_train.shape[1],x_train.shape[2]),name='input'),
         LSTM(units=20,return_sequences=True),
-        BatchNormalization(),
+        LayerNormalization(),
         LSTM(units=20, return_sequences=True),
-        BatchNormalization(),
+        LayerNormalization(),
         LSTM(units=20,return_sequences=False),
-        BatchNormalization(),
         Flatten(),
-        Dense(units=10, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
-        BatchNormalization(),
-        Dense(units=10, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Dense(units=20, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
+        Dense(units=10, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
         BatchNormalization(),
         Dropout(0.3),
         Dense(units=n_classes, activation='softmax')
@@ -98,16 +96,13 @@ def create_mlp_baseline(x_train, n_classes):
 
     model = Sequential([
         Input(shape=(x_train.shape[1],x_train.shape[2])),
+        Dense(units=6, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.3),kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
         Flatten(),
-        Dense(units=100, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.3),kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Dense(units=30, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.3),kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
         BatchNormalization(),
-        Dense(units=30, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.3),kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Dense(units=30, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.3),kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
         BatchNormalization(),
-        Dense(units=30, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.3), kernel_initializer='HeNormal', kernel_regularizer='l1'),
-        BatchNormalization(),
-        Dense(units=30, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.3), kernel_initializer='HeNormal', kernel_regularizer='l1'),
-        BatchNormalization(),
-        Dropout(0.4),
+        Dropout(0.2),
         Dense(units=n_classes, activation='softmax')
     ])
 
@@ -117,21 +112,19 @@ def create_mlp_baseline(x_train, n_classes):
 def create_conv_baseline(x_train,n_classes):
     model = Sequential([
         Input(shape=(x_train.shape[1:])),
-        Conv2D(filters=5,kernel_size=(3,3),activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2),kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Conv2D(filters=5,kernel_size=(6,6),activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2),kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
         BatchNormalization(),
-        Conv2D(filters=3,kernel_size=(1,1),activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2),kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Conv2D(filters=3,kernel_size=(1,1),activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2),kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
         BatchNormalization(),
-        Conv1D(filters=5,kernel_size=6,activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2),kernel_initializer='HeNormal',kernel_regularizer='l1'),
-        Conv1D(filters=3,kernel_size=3,activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2),kernel_initializer='HeNormal',kernel_regularizer='l1'),
+        Conv1D(filters=5,kernel_size=6,activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2),kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
+        Conv1D(filters=3,kernel_size=3,activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2),kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
         Flatten(),
         Dropout(0.3),
-        Dense(units=50, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2),kernel_initializer='HeNormal',kernel_regularizer='l1'),
-        BatchNormalization(),
         Dense(units=20, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2), kernel_initializer='HeNormal',
-              kernel_regularizer='l1'),
+              kernel_regularizer='l1_l2'),
         BatchNormalization(),
-        Dense(units=20, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2), kernel_initializer='HeNormal',
-              kernel_regularizer='l1'),
+        Dense(units=10, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.2), kernel_initializer='HeNormal',
+              kernel_regularizer='l1_l2'),
         BatchNormalization(),
         Dense(units=n_classes, activation='softmax')
     ])

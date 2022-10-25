@@ -29,29 +29,7 @@ from models.baselines import RegressionPredictor, create_mlp_baseline, create_ls
 from models.transformers import create_2towers, create_stacked_encoder, create_encoder_block
 
 
-def balanced_accuracy(y_true,y_pred):
-    return balanced_accuracy_score(tf.argmax(y_true,axis=1),tf.argmax(y_pred,axis=1))
 
-
-
-
-def custom_loss(y_true, y_pred):
-    cat_cross_loss = CategoricalCrossentropy()(y_true, y_pred)
-    return cat_cross_loss
-
-    # all penalize same class predictions accross batch
-    y, idx, count = unique_with_counts(y_pred)
-    most_common_count = tf.math.reduce_max(count)
-    most_common_relative_freq = tf.math.divide(most_common_count, tf.size(y_pred))
-    penalty = tf.constant(0, dtype=tf.float32)
-    penality_border = 0.8
-
-    if most_common_relative_freq > penality_border:
-        penalty = tf.math.subtract(most_common_relative_freq, penality_border)
-        penalty = tf.math.divide(penalty, 1 - penality_border)
-        penalty = tf.cast(penalty, tf.float32)
-
-    return cat_cross_loss + penalty
 
 
 def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: StandardScaler, pca: PCA,
@@ -132,7 +110,7 @@ def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: S
     return train_x, train_y, test_x, test_y, final_feature_names, scaler, window_generator
 
 
-def main():
+def main(training_group_id:str,model_name:str):
     test_reader = CryptoCompareReader('btc', '../splits/test', drop_na_subset=['close'], add_time_columns=True,
                                       drop_last=True)
     train_reader = CryptoCompareReader('btc', '../splits/train', drop_na_subset=['close'], add_time_columns=True,
@@ -140,7 +118,7 @@ def main():
     test_data = test_reader.read().drop(columns=['Unnamed: 0_x'], errors='ignore')
     train_data = train_reader.read().drop(columns='Unnamed: 0_x', errors='ignore')
 
-    training_id = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
+    training_id = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S') + '_' + training_group_id
 
     training_config = TrainingConfig(
         training_id=training_id,
@@ -171,33 +149,34 @@ def main():
 
     ##-------choose a model--------#
     # LSTM#
-    model = create_lstm_baseline(x_train, len(training_config.classifier_borders) + 1)
+    if model_name == 'lstm':
+        model = create_lstm_baseline(x_train, len(training_config.classifier_borders) + 1)
 
     # MLP#
-    # model = create_mlp_baseline(x_train, len(training_config.classifier_borders) + 1)
+    elif model_name == 'mlp':
+        model = create_mlp_baseline(x_train, len(training_config.classifier_borders) + 1)
 
-    # CONV#
-    # x_train = np.reshape(x_train, (*x_train.shape, 1))
-    # x_test = np.reshape(x_test, (*x_test.shape, 1))
-    # model = create_conv_baseline(x_train, len(training_config.classifier_borders) + 1)
+    # CNN#
+    elif model_name == 'cnn':
+        x_train = np.reshape(x_train, (*x_train.shape, 1))
+        x_test = np.reshape(x_test, (*x_test.shape, 1))
+        model = create_conv_baseline(x_train, len(training_config.classifier_borders) + 1)
+        inputs_train = [x_train]
+        inputs_test = [x_test]
 
-    # 2 TOWERS TRANSFORMER
-    # x_train_trans = np.transpose(x_train, (0, 2, 1))
-    # x_test_trans = np.transpose(x_test, (0, 2, 1))
-    # model = create_2towers(x_train, x_train_trans, len(training_config.classifier_borders) + 1)
-    # inputs_train = [x_train, x_train_trans]
-    # inputs_test = [x_test, x_test_trans]
+
 
     # STACKED ENCODERS
-    # model = create_stacked_encoder(x_train,len(training_config.classifier_borders)+1)
+    elif model_name == 'encoder_stack':
+        model = create_stacked_encoder(x_train,len(training_config.classifier_borders)+1)
 
 
     # ENCODER BLOCK
-    # inputs_train = x_train.reshape((x_train.shape[0],-1,1))
-    # inputs_test = x_test.reshape((x_test.shape[0],-1,1))
-    # inputs_train = x_train
-    # inputs_test = x_test
-    # model = create_encoder_block(inputs_train,len(training_config.classifier_borders)+1)
+    elif model_name == 'encoder_block':
+        model = create_encoder_block(x_train,len(training_config.classifier_borders)+1)
+
+    else:
+        raise ValueError('Invalid model name: '+model_name)
 
 
     ##-------choose a model--------#
@@ -229,4 +208,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    n_runs = 20
+    model_name = 'cnn'
+    group = f'{model_name}_2022_10_25'
+    for run in range(n_runs):
+        main(group,model_name)
