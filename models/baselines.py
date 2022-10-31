@@ -81,10 +81,8 @@ def create_lstm_baseline(x_train,n_classes):
         LayerNormalization(),
         LSTM(units=20,return_sequences=False),
         Flatten(),
-        Dense(units=20, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
-        Dense(units=10, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
-        BatchNormalization(),
         Dropout(0.3),
+        Dense(units=20, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
         Dense(units=n_classes, activation='softmax')
     ])
 
@@ -96,7 +94,7 @@ def create_mlp_baseline(x_train, n_classes):
 
     model = Sequential([
         Input(shape=(x_train.shape[1],x_train.shape[2])),
-        Dense(units=6, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.3),kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
+        Dense(units=8, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.3),kernel_initializer='HeNormal',kernel_regularizer='l1_l2',name='embedding'),
         Flatten(),
         Dense(units=30, activation=tensorflow.keras.layers.LeakyReLU(alpha=0.3),kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
         BatchNormalization(),

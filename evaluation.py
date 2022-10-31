@@ -23,9 +23,11 @@ def pad_values(array, labels):
 
 
 def viz_history(hist: History, training_dir):
-    ax = pd.DataFrame(hist.history).filter(regex='loss').plot(figsize=(8, 5))
-    pd.DataFrame(hist.history).filter(regex='accuracy').plot(secondary_y=True, ax=ax)
-    plt.savefig(os.path.join(training_dir, 'history.png'))
+    # ax = pd.DataFrame(hist.history).filter(regex='loss').plot(figsize=(8, 5))
+    # pd.DataFrame(hist.history).filter(regex='val_').plot(secondary_y=True, ax=ax)
+    with open(os.path.join(training_dir, 'history.json'),"w") as f:
+        print(hist.history)
+        json.dump(str(hist.history),f)
 
 
 def save_model(model: tensorflow.keras.models.Model, config: TrainingConfig, training_dir):
@@ -38,7 +40,7 @@ def save_model(model: tensorflow.keras.models.Model, config: TrainingConfig, tra
 
     # ws = model.get_layer('encoder_0')._multi_head_attention_layer.get_weights()
     # np.save(os.path.join(training_dir, 'encoder_0_weights'), ws, allow_pickle=True)
-    model.save_weights(os.path.join(training_dir, 'model_weights.h5'), save_format="h5")
+    model.save(os.path.join(training_dir, 'model'))
 
 
 def _get_prediction_colors(ypred, ytrue, banned_indices, test_data):
@@ -57,7 +59,9 @@ def _get_prediction_colors(ypred, ytrue, banned_indices, test_data):
             ypreds_verbose.append(None)
 
     n_classes = len(np.unique(ytrue))
-    if n_classes == 3:
+    if n_classes == 2:
+        colors=['r','g']
+    elif n_classes == 3:
         colors = ['r', 'y', 'g']
     elif n_classes == 4:
         colors = ['maroon', 'darksalmon', 'palegreen', 'green']

@@ -190,6 +190,9 @@ class PCAFromFirstValidIndex(PCA):
 
 class ManualFeatureEngineer:
 
+    def __init__(self,hl):
+        self.hl = hl
+
     def fit(self, X, y=None):
         return self
 
@@ -198,6 +201,8 @@ class ManualFeatureEngineer:
         X.loc[X["BTCTradedToUSD"] == 0.0, 'BTCTradedToUSD'] = (X["BTCTradedToUSD"].shift(7) + X["BTCTradedToUSD"].shift(
             -7)) / 2.0
 
+        if self.hl > 0:
+            X['close'] = X['close'].ewm(halflife=self.hl).mean()
         # want to reduce dimensions
         X['daily_movement'] = X['high'] - X['low']
         # X.drop(columns=['high', 'low'], inplace=True)
@@ -246,7 +251,7 @@ class DiffTransformer(TransformerMixin):
         if self.replace_nan_to_zeros:
             X = X.replace([np.nan,np.inf,-np.inf], 0.0)
 
-        X = X.round(1)
+        X = X.round(4)
 
         return X
 
@@ -449,5 +454,43 @@ class WindowGenerator(TransformerMixin):
 
             x_data.append(features.to_numpy())
             y_data.append(targets.to_numpy())
+
+        return np.array(x_data), np.array(y_data)
+
+
+
+class WindowGeneratorRegression(TransformerMixin):
+
+    def __init__(self, window_size: int, features: Sequence[str], targets: Sequence[str],
+                 is_valid_target_col_name: str, regression_ahead:int):
+        self.is_valid_target_col_name = is_valid_target_col_name
+        self.window_size = window_size
+        self.features = features
+        self.targets = targets
+        self.regression_ahead = regression_ahead
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X: pd.DataFrame, y=None) -> Tuple[np.ndarray, np.ndarray]:
+
+        indices = np.array(range(len(X)))
+
+        windows = sliding_window_view(indices, self.window_size+self.regression_ahead)  # last one is the target
+
+        padding = self.window_size-self.regression_ahead
+
+        x_data = []
+        y_data = []
+        for window in windows:
+            df_part = X.iloc[window]
+            features = df_part.iloc[:self.window_size][self.features]
+            targets = df_part.iloc[-self.regression_ahead:][self.targets].values.flatten()
+
+            targets = np.concatenate([targets,np.array([-1]*padding)])
+
+
+            x_data.append(features.to_numpy())
+            y_data.append(targets)
 
         return np.array(x_data), np.array(y_data)
