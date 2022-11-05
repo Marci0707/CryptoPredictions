@@ -28,28 +28,31 @@ def main(group_to_eval):
 
     preds_all = []
     preds_all_h0 = []
-    try:
-        for train_id in os.listdir(trainings_dir):
-            if group_to_eval not in train_id:
-                continue
 
-            y_preds = np.load(os.path.join(trainings_dir, train_id, 'pred.npy'), allow_pickle=True)
-            # y_preds_h0 = np.load(os.path.join(trainings_dir, train_id, 'preds_h0.npy'), allow_pickle=True)
+    for train_id in os.listdir(trainings_dir):
+        if group_to_eval not in train_id:
+            continue
 
-            y_preds_1d = y_preds[:, 1]
-            # y_preds_h0_1d = y_preds_h0[:, 1]
 
-            preds_all.append(y_preds_1d.tolist())
-            # preds_all_h0.append(y_preds_h0_1d.tolist())
-    except FileNotFoundError as e:
-        return
+        # y_preds = np.load(os.path.join(trainings_dir, train_id, 'pred.npy'), allow_pickle=True)
+        try:
+            y_preds = np.load(os.path.join(trainings_dir, train_id, 'preds_h0_p0.npy'), allow_pickle=True)
+        except FileNotFoundError as e:
+            y_preds = np.load(os.path.join(trainings_dir, train_id, 'pred_h0.npy'), allow_pickle=True)
+
+        # y_preds_1d = y_preds[:, 1]
+        y_preds_h0_1d = y_preds[:, 1]
+
+        # preds_all.append(y_preds_1d.tolist())
+        preds_all_h0.append(y_preds_h0_1d.tolist())
+
     with open(os.path.join(trainings_dir, os.listdir(trainings_dir)[0], 'model_summary.txt')) as f:
         content = f.read()
         match = re.search(r'Total params:(.*\n)', content)
         params = match[1].replace(',', '').strip()
 
     group_results = {
-        'preds': preds_all,
+        'preds': preds_all_h0,
         # 'preds_h0': preds_all_h0,
         'params': params
     }
@@ -61,7 +64,7 @@ def main(group_to_eval):
 
 
 if __name__ == '__main__':
-    h = [0,1, 3, 5, 8, 13]
+    h = [0,1, 3]
     p = [0,1, 3, 5, 8, 13]
     models = ['cnn', 'mlp', 'lstm', 'encoder_block', 'encoder_stack']
     for model in models:

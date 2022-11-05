@@ -74,8 +74,8 @@ def update_embedding_efficiency_plot():
 
     plt.show()
     plt.scatter(dims,medians)
-    plt.xlabel('Embedding Dimension')
-    plt.ylabel('Minimum MSE on pretrainings')
+    plt.xlabel('Embedding Dimension',fontsize=18)
+    plt.ylabel('Minimum MSE on pretrainings',fontsize=18)
     plt.savefig(os.path.join(base_dir,'efficiency.png'))
 
 
@@ -124,8 +124,8 @@ def main(DIM):
 
 
 if __name__ == '__main__':
-
-    for i in range(20):
-        print('pretraining on embedding dim',8)
-        main(8)
+    update_embedding_efficiency_plot()
+    # for i in range(20):
+    #     print('pretraining on embedding dim',8)
+    #     main(8)
     # update_embedding_efficiency_plot()

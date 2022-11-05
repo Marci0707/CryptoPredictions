@@ -178,8 +178,8 @@ def main(training_group_id: str, model_name: str, halflife: int, tp: int):
 
     x_train = np.load(f'../splits/train/x_preprocessed_h{halflife}_p{tp}.npy')
     y_train = np.load(f'../splits/train/y_preprocessed_h{halflife}_p{tp}.npy')
-    x_test = np.load(f'../splits/test/x_preprocessed_h{halflife}_p{tp}.npy')
-    y_test = np.load(f'../splits/test/y_preprocessed_h{halflife}_p{tp}.npy')
+    x_test = np.load(f'../splits/test/x_preprocessed_h{0}_p{0}.npy')
+    y_test = np.load(f'../splits/test/y_preprocessed_h{0}_p{0}.npy')
 
     print('x,y shapes train', x_train.shape, y_train.shape)
     print('x,y shapes test', x_test.shape, y_test.shape)
@@ -235,8 +235,8 @@ def main(training_group_id: str, model_name: str, halflife: int, tp: int):
                   metrics=['accuracy',
                            F1Score(num_classes=len(training_config.classifier_borders) + 1, average='weighted')])
 
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=8, restore_best_weights=True)
-    lr_decay = ReduceLROnPlateau(monitor='val_accuracy', patience=3, factor=0.4, min_lr=1e-8)
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=7, restore_best_weights=True)
+    lr_decay = ReduceLROnPlateau(monitor='val_accuracy', patience=3, factor=0.1, min_lr=1e-8)
 
     inputs_train, inputs_valid, y_train, y_valid = train_test_split(inputs_train, y_train, test_size=0.2,
                                                                     random_state=42)
@@ -251,7 +251,7 @@ def main(training_group_id: str, model_name: str, halflife: int, tp: int):
 
     save_model(model, training_config, training_dir)
     viz_history(hist, training_dir)
-    np.save(os.path.join(training_dir, 'pred.npy'),y_preds , allow_pickle=True)
+    np.save(os.path.join(training_dir, 'pred_h0.npy'),y_preds , allow_pickle=True)
 
     # banned_indices = np.load(f'../splits/train/banned_indices_h{halflife}_p{tp}.npy')
     # eval_results(y_preds, y_test, test_data, training_dir, banned_indices, training_config.regression_days,
@@ -259,14 +259,23 @@ def main(training_group_id: str, model_name: str, halflife: int, tp: int):
 
 
 if __name__ == '__main__':
-    n_runs = 25
-    for halflife in (1, 3, 5, 8, 13,0):
-        for top_percent in (1, 3, 5, 8, 13,0):
+    n_runs = 15
+    for halflife in (0,):
+        for top_percent in (0, 1, 3, 5, 8, 13):
             # for model_name in ('mlp',):
             for model_name in ('mlp', 'cnn', 'lstm', 'encoder_stack', 'encoder_block'):
             # for model_name in ('mlp',):
                 group = f'{model_name}_h{halflife}_p{top_percent}_test'
-                for run in range(n_runs):
-                    print('----now training', group, f' ({run + 1}/{n_runs})', '----')
-                    main(group, model_name, halflife, top_percent)
-                    tf.keras.backend.clear_session()
+
+                if group not in os.listdir('../trainings'):
+                    print('training',group)
+                    if 'lstm' in group:
+                        n_runs=10
+                    else:
+                        n_runs=10
+                    for run in range(n_runs):
+                        print('----now training', group, f' ({run + 1}/{n_runs})', '----')
+                        main(group, model_name, halflife, top_percent)
+                        tf.keras.backend.clear_session()
+                else:
+                    print('skipped',group)
