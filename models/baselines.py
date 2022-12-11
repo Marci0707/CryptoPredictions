@@ -70,6 +70,20 @@ class RandomBinaryPredictor:
         return random.choices(population=values, weights=self.guess_distribution, k=len(arr))
 
 
+def create_small_lstm_baseline(x_train,n_classes):
+
+    model = Sequential([
+        Input(shape=(x_train.shape[1],x_train.shape[2]),name='input'),
+        LSTM(units=20,return_sequences=True),
+        LayerNormalization(),
+        Flatten(),
+        Dropout(0.3),
+        Dense(units=20, activation='relu',kernel_initializer='HeNormal',kernel_regularizer='l1_l2'),
+        Dense(units=n_classes, activation='softmax')
+    ])
+
+    return model
+
 
 def create_lstm_baseline(x_train,n_classes):
 

@@ -12,7 +12,6 @@ from sklearn.utils import compute_class_weight
 
 from _common import TrainingConfig
 from _preprocessing import PCAFromFirstValidIndex, CryptoCompareReader
-from models.transformers import hyperopt_2towers
 from scripts.train_model_script import preprocess_data
 
 

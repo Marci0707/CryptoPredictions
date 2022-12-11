@@ -66,7 +66,7 @@ def main(group_to_eval):
 if __name__ == '__main__':
     h = [0,1, 3]
     p = [0,1, 3, 5, 8, 13]
-    models = ['cnn', 'mlp', 'lstm', 'encoder_block', 'encoder_stack']
+    models = ['mlp', 'cnn', 'lstm_small', 'lstm_big', 'encoder_stack', 'encoder_block']
     for model in models:
         for hh in h:
             for pp in p:

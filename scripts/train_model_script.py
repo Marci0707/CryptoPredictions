@@ -27,7 +27,8 @@ from _preprocessing import CryptoCompareReader, ColumnLogTransformer, \
     PCAFromFirstValidIndex, LinearCoefficientTargetGenerator, ManualValidTargetDetector, WindowGenerator, \
     inverse_scaler_subset, decompose_to_features
 from evaluation import viz_history, save_model, eval_results
-from models.baselines import RegressionPredictor, create_mlp_baseline, create_lstm_baseline, create_conv_baseline
+from models.baselines import RegressionPredictor, create_mlp_baseline, create_lstm_baseline, create_conv_baseline, \
+    create_small_lstm_baseline
 from models.transformers import create_stacked_encoder, create_encoder_block
 
 
@@ -48,7 +49,7 @@ class TransformerSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
         return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
 
 
-def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: StandardScaler, pca: PCA,
+def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: StandardScaler,
                     config: TrainingConfig, halflife: int):
     # time will not be in training data
     # based on high-low, daily movement will be calculated and the formers will be dropped
@@ -92,16 +93,6 @@ def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: S
             ('pandanizer1',
              Pandanizer(
                  columns=to_scale_columns + [col for col in test_data_tr.columns if col not in to_scale_columns])),
-            ('pca_social', ColumnTransformer(
-                [
-                    ('pca', pca, test_data_tr.filter(regex='reddit').columns.tolist())
-                ]
-                , remainder='passthrough'
-            )
-             ),
-            ('pandanizer2', Pandanizer(
-                columns=['social1', 'social2', 'social3'] + [col for col in test_data_tr.columns if
-                                                             'reddit' not in col])),
         ]
     )
     # somehow std scalers and pca 'forget' their attributes, could not debug quickly
@@ -131,12 +122,12 @@ def preprocess_data(train_data: pd.DataFrame, test_data: pd.DataFrame, scaler: S
 
 
 def main(training_group_id: str, model_name: str, halflife: int, tp: int):
-    # test_reader = CryptoCompareReader('btc', '../splits/test', drop_na_subset=['close'], add_time_columns=True,
-    #                                   drop_last=True)
-    # train_reader = CryptoCompareReader('btc', '../splits/train', drop_na_subset=['close'], add_time_columns=True,
-    #                                    drop_last=True)
-    # test_data = test_reader.read().drop(columns=['Unnamed: 0_x'], errors='ignore')
-    # train_data = train_reader.read().drop(columns='Unnamed: 0_x', errors='ignore')
+    test_reader = CryptoCompareReader('btc', '../splits/test', drop_na_subset=['close'], add_time_columns=True,
+                                      drop_last=True)
+    train_reader = CryptoCompareReader('btc', '../splits/train', drop_na_subset=['close'], add_time_columns=True,
+                                       drop_last=True)
+    test_data = test_reader.read().drop(columns=['Unnamed: 0_x','Unnamed: 0.1'], errors='ignore')
+    train_data = train_reader.read().drop(columns=['Unnamed: 0_x','Unnamed: 0.1'], errors='ignore')
 
     training_id = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S') + '_' + training_group_id
 
@@ -149,37 +140,36 @@ def main(training_group_id: str, model_name: str, halflife: int, tp: int):
         optimizer=Adam(learning_rate=0.001)
     )
 
-    # pca = PCAFromFirstValidIndex(n_components=3)
-    # scaler = StandardScaler()
-    #
-    # x_train, y_train, x_test, y_test, feature_names, scaler, window_generator = preprocess_data(
-    #     train_data=train_data.copy(deep=True), test_data=test_data.copy(deep=True),
-    #     scaler=scaler,
-    #     pca=pca,
-    #     config=training_config,halflife=halflife)
-    #
-    # banned_indices_arr = np.array(window_generator.banned_indices)
-    # np.save(f'../splits/train/banned_indices_h{halflife}_p{tp}.npy', banned_indices_arr)
-    # # balance training set
-    # y_dense = np.argmax(y_train, axis=1)
-    # decrease_y = np.argwhere(y_dense == 0)
-    # increase_y = np.argwhere(y_dense == 1)
-    # diff = len(increase_y) - len(decrease_y)
-    # filtered_increase = increase_y[diff:]
-    # indices = sorted(np.concatenate([decrease_y, filtered_increase]).flatten())
-    # x_train = x_train[indices]
-    # y_train = y_train[indices]
-    #
-    #
-    # np.save(f'../splits/train/x_preprocessed_h{halflife}_p{tp}.npy', x_train)
-    # np.save(f'../splits/train/y_preprocessed_h{halflife}_p{tp}.npy', y_train)
-    # np.save(f'../splits/test/x_preprocessed_h{halflife}_p{tp}.npy', x_test)
-    # np.save(f'../splits/test/y_preprocessed_h{halflife}_p{tp}.npy', y_test)
+    scaler = StandardScaler()
 
-    x_train = np.load(f'../splits/train/x_preprocessed_h{halflife}_p{tp}.npy')
-    y_train = np.load(f'../splits/train/y_preprocessed_h{halflife}_p{tp}.npy')
-    x_test = np.load(f'../splits/test/x_preprocessed_h{0}_p{0}.npy')
-    y_test = np.load(f'../splits/test/y_preprocessed_h{0}_p{0}.npy')
+    x_train, y_train, x_test, y_test, feature_names, scaler, window_generator = preprocess_data(
+        train_data=train_data.copy(deep=True), test_data=test_data.copy(deep=True),
+        scaler=scaler,
+        config=training_config,halflife=halflife)
+
+    banned_indices_arr = np.array(window_generator.banned_indices)
+    np.save(f'../splits/train/banned_indices_h{halflife}_p{tp}.npy', banned_indices_arr)
+    # balance training set
+    y_dense = np.argmax(y_train, axis=1)
+    decrease_y = np.argwhere(y_dense == 0)
+    increase_y = np.argwhere(y_dense == 1)
+    diff = len(increase_y) - len(decrease_y)
+    filtered_increase = increase_y[diff:]
+    indices = sorted(np.concatenate([decrease_y, filtered_increase]).flatten())
+    x_train = x_train[indices]
+    y_train = y_train[indices]
+
+    print(halflife,top_percent,x_train.shape)
+    np.save(f'../splits/train/x_preprocessed_h{halflife}_p{tp}.npy', x_train)
+    np.save(f'../splits/train/y_preprocessed_h{halflife}_p{tp}.npy', y_train)
+    np.save(f'../splits/test/x_preprocessed_h{halflife}_p{tp}.npy', x_test)
+    np.save(f'../splits/test/y_preprocessed_h{halflife}_p{tp}.npy', y_test)
+
+
+    # x_train = np.load(f'../splits/train/x_preprocessed_h{halflife}_p{tp}.npy')
+    # y_train = np.load(f'../splits/train/y_preprocessed_h{halflife}_p{tp}.npy')
+    # x_test = np.load(f'../splits/test/x_preprocessed_h{0}_p{0}.npy')
+    # y_test = np.load(f'../splits/test/y_preprocessed_h{0}_p{0}.npy')
 
     print('x,y shapes train', x_train.shape, y_train.shape)
     print('x,y shapes test', x_test.shape, y_test.shape)
@@ -195,13 +185,18 @@ def main(training_group_id: str, model_name: str, halflife: int, tp: int):
     inputs_train = x_train
     inputs_test = x_test
 
-    pretrained_autoencoder = tf.keras.models.load_model('../pretraining/best.hdf5')
+    pretrained_autoencoder = tf.keras.models.load_model(f'../pretraining/best_{halflife}.hdf5')
     pretrained_embedding = pretrained_autoencoder.get_layer('embedding')
 
     ##-------choose a model--------#
-    # LSTM#
-    if model_name == 'lstm':
+    # LSTM BIG#
+    if model_name == 'lstm_big':
         model = create_lstm_baseline(x_train, len(training_config.classifier_borders) + 1)
+
+    ##-------choose a model--------#
+    # LSTM SMALL#
+    elif model_name == 'lstm_small':
+        model = create_small_lstm_baseline(x_train, len(training_config.classifier_borders) + 1)
 
     # MLP#
     elif model_name == 'mlp':
@@ -238,10 +233,8 @@ def main(training_group_id: str, model_name: str, halflife: int, tp: int):
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=7, restore_best_weights=True)
     lr_decay = ReduceLROnPlateau(monitor='val_accuracy', patience=3, factor=0.1, min_lr=1e-8)
 
-    inputs_train, inputs_valid, y_train, y_valid = train_test_split(inputs_train, y_train, test_size=0.2,
-                                                                    random_state=42)
 
-    hist = model.fit(inputs_train, y_train, epochs=100, validation_data=(inputs_valid, y_valid),
+    hist = model.fit(inputs_train, y_train, epochs=100, validation_split=0.2,
                      callbacks=[early_stopping, lr_decay],
                      shuffle=True)
     # hist = model.fit(x_train, y_train, epochs=100, validation_split=0.2, callbacks=[early_stopping,lr_decay], shuffle=True)
@@ -259,20 +252,13 @@ def main(training_group_id: str, model_name: str, halflife: int, tp: int):
 
 
 if __name__ == '__main__':
-    n_runs = 15
-    for halflife in (0,):
+    n_runs = 25
+    for halflife in (0,1,3):
         for top_percent in (0, 1, 3, 5, 8, 13):
-            # for model_name in ('mlp',):
-            for model_name in ('mlp', 'cnn', 'lstm', 'encoder_stack', 'encoder_block'):
-            # for model_name in ('mlp',):
+            for model_name in ('mlp', 'cnn', 'lstm_small', 'lstm_big', 'encoder_stack', 'encoder_block'):
                 group = f'{model_name}_h{halflife}_p{top_percent}_test'
-
                 if group not in os.listdir('../trainings'):
                     print('training',group)
-                    if 'lstm' in group:
-                        n_runs=10
-                    else:
-                        n_runs=10
                     for run in range(n_runs):
                         print('----now training', group, f' ({run + 1}/{n_runs})', '----')
                         main(group, model_name, halflife, top_percent)

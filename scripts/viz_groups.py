@@ -73,12 +73,7 @@ def main(model_name,p,h):
         model_type = '_'.join(model_name.split('_')[2])
 
     nn_types = []
-    f1scores = []
     accuracies = []
-
-
-    related_p_accuracy  = []
-    related_h_accuracy = []
 
     for training_data in os.listdir(data_dir):
 
@@ -86,17 +81,15 @@ def main(model_name,p,h):
             data = json.load(f)
 
 
-        f1scores.append(pd.Series(data['f1scores'], name=f'{nn_type}'))
-        accuracies.append(pd.Series(data['accs'], name=f'{nn_type}'))
-        nn_types += [nn_type] * len(data['preds'])
+        accuracies.append(pd.Series(data['accs'], name=f'{model_type}'))
+        nn_types += [model_type] * len(data['preds'])
 
 
 
     accuracies = pd.DataFrame(accuracies).T
-    f1scores = pd.DataFrame(f1scores).T
 
 
-    viz_bias_variance(accuracies, grpid)
+    # viz_bias_variance(accuracies, grpid)
     plt.show()
     viz_preds_boxplots(accuracies)
 
